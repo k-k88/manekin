@@ -17,8 +17,21 @@ class Company extends Model
     ];
 
     // ✅ 1つの企業は複数のユーザーを持つ
+    
+// app/Models/Company.php
     public function users()
     {
         return $this->hasMany(User::class);
     }
+
+    public function stores()
+    {
+        return $this->hasMany(Store::class);
+    }
+
+    public function attendances()
+    {
+        return $this->hasManyThrough(Attendance::class, User::class);
+    }
+
 }

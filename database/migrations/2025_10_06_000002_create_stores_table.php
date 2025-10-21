@@ -12,13 +12,21 @@ return new class extends Migration {
             $table->string('name');
             $table->string('address')->nullable();
             $table->string('phone')->nullable();
-            $table->unsignedBigInteger('manager_id')->nullable(); // 外部キーはあとで
+            $table->unsignedBigInteger('manager_id')->nullable(); // 外部キーはあとで設定
+            $table->unsignedBigInteger('company_id'); // 会社IDを追加
+            $table->foreign('company_id')
+                  ->references('id')
+                  ->on('companies')
+                  ->onDelete('cascade');
             $table->timestamps();
         });
     }
 
     public function down(): void
     {
+        Schema::table('stores', function (Blueprint $table) {
+            $table->dropForeign(['company_id']);
+        });
         Schema::dropIfExists('stores');
     }
 };

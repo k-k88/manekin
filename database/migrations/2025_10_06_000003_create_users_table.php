@@ -4,17 +4,18 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-return new class extends Migration {
+class CreateUsersTable extends Migration
+{
     public function up(): void
     {
         Schema::create('users', function (Blueprint $table) {
             $table->id();
-            $table->unsignedBigInteger('company_id')->nullable(); // ← 追加（どの会社の社員か）
+            $table->unsignedBigInteger('company_id')->nullable();
             $table->string('name');
             $table->string('line_user_id')->nullable();
             $table->string('email')->nullable();
             $table->string('phone')->nullable();
-            $table->enum('role', ['staff', 'manager', 'admin'])->default('staff');
+            $table->enum('role', ['employee', 'company_admin'])->default('employee');
             $table->unsignedBigInteger('store_id')->nullable();
             $table->date('hire_date')->nullable();
             $table->enum('status', ['active', 'inactive'])->default('active');
@@ -23,7 +24,7 @@ return new class extends Migration {
             $table->rememberToken();
             $table->timestamps();
 
-            // 外部キー制約（あとでcompanies/storesを作ってもOK）
+            // 外部キー
             $table->foreign('company_id')
                   ->references('id')->on('companies')
                   ->onDelete('cascade');
@@ -37,4 +38,4 @@ return new class extends Migration {
     {
         Schema::dropIfExists('users');
     }
-};
+}

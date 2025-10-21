@@ -1,0 +1,60 @@
+{{-- resources/views/company/attendances.blade.php --}}
+@extends('layouts.app')
+
+@section('content')
+<div class="container mt-4">
+    <h2 class="mb-4">🕒 {{ $company->name }} 勤怠一覧</h2>
+
+    <div class="mb-3">
+        <a href="{{ route('company.dashboard', $company->id) }}" class="btn btn-secondary">← ダッシュボードに戻る</a>
+    </div>
+
+    <form method="GET" class="mb-3 d-flex gap-2 align-items-center">
+        <input type="month" name="month" value="{{ request('month', now()->format('Y-m')) }}" class="form-control w-auto">
+        <button type="submit" class="btn btn-primary">表示</button>
+    </form>
+
+    <table class="table table-bordered table-hover align-middle shadow-sm">
+        <thead class="table-light">
+            <tr>
+                <th>社員名</th>
+                <th>日付</th>
+                <th>出勤時刻</th>
+                <th>退勤時刻</th>
+                <th>勤務時間</th>
+                <th>ステータス</th>
+            </tr>
+        </thead>
+        <tbody>
+            @forelse ($attendances as $attendance)
+                <tr>
+                    <td>{{ $attendance->user->name }}</td>
+                    <td>{{ $attendance->date }}</td>
+                    <td>{{ $attendance->clock_in ?? '-' }}</td>
+                    <td>{{ $attendance->clock_out ?? '-' }}</td>
+                    <td>
+                        @if ($attendance->clock_in && $attendance->clock_out)
+                            {{ \Carbon\Carbon::parse($attendance->clock_in)->diffInHours($attendance->clock_out) }} 時間
+                        @else
+                            -
+                        @endif
+                    </td>
+                    <td>
+                        @if ($attendance->status === 'approved')
+                            <span class="badge bg-success">承認済み</span>
+                        @elseif ($attendance->status === 'pending')
+                            <span class="badge bg-warning text-dark">申請中</span>
+                        @else
+                            <span class="badge bg-secondary">未申請</span>
+                        @endif
+                    </td>
+                </tr>
+            @empty
+                <tr>
+                    <td colspan="6" class="text-center text-muted">勤怠データがありません。</td>
+                </tr>
+            @endforelse
+        </tbody>
+    </table>
+</div>
+@endsection
