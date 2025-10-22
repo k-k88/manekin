@@ -4,25 +4,15 @@
 <div class="container">
     <h1 class="mb-4">給与一覧</h1>
 
-    {{-- 成功メッセージ --}}
     @if(session('success'))
-        <div class="alert alert-success">
-            {{ session('success') }}
-        </div>
+        <div class="alert alert-success">{{ session('success') }}</div>
     @endif
 
-    {{-- 勤怠から給与生成リンク --}}
-    <div class="mb-3">
-        <a href="{{ route('company.generatePayroll', ['id' => request()->route('id')]) }}">
-            勤怠から給与を生成する
-        </a>
-    </div>
-
-    {{-- フィルター --}}
-    <form method="GET" action="{{ route('company.payrolls', ['id' => request()->route('id')]) }}" class="row g-3 mb-4">
+    <form method="GET" class="row mb-3">
         <div class="col-md-3">
             <label for="month" class="form-label">月</label>
-            <input type="month" id="month" name="month" class="form-control" value="{{ request('month', now()->format('Y-m')) }}">
+            <input type="month" id="month" name="month" class="form-control"
+                   value="{{ request('month') }}">
         </div>
         <div class="col-md-3">
             <label for="user_id" class="form-label">社員</label>
@@ -41,44 +31,40 @@
         </div>
     </form>
 
-    {{-- 給与テーブル --}}
-    <div class="table-responsive">
-        <table class="table table-bordered table-hover">
-            <thead class="table-light">
-                <tr>
-                    <th>社員名</th>
-                    <th>日付</th>
-                    <th class="text-end">時給</th>
-                    <th class="text-end">勤務時間</th>
-                    <th class="text-end">給与</th>
-                </tr>
-            </thead>
-            <tbody>
-                @forelse ($payrolls as $payroll)
-                    <tr>
-                        <td>{{ $payroll->user->name }}</td>
-                        <td>{{ \Carbon\Carbon::parse($payroll->month)->format('Y-m-d') }}</td>
-                        <td class="text-end">{{ number_format($payroll->hourly_wage) }}円</td>
-                        <td class="text-end">{{ number_format($payroll->worked_hours, 2) }}h</td>
-                        <td class="text-end">{{ number_format($payroll->total_pay) }}円</td>
-                    </tr>
-                @empty
-                    <tr>
-                        <td colspan="5" class="text-center text-muted">給与データがありません</td>
-                    </tr>
-                @endforelse
-            </tbody>
-        </table>
-    </div>
+    <a href="{{ route('company.generatePayroll', ['id' => request()->route('id')]) }}" class="btn btn-success mb-3">
+        勤怠から給与を生成する
+    </a>
 
-    {{-- 総給与 --}}
+    <table class="table table-bordered">
+        <thead>
+            <tr>
+                <th>社員名</th>
+                <th>月</th>
+                <th>時給</th>
+                <th>勤務時間</th>
+                <th>給与</th>
+            </tr>
+        </thead>
+        <tbody>
+            @forelse($payrolls as $payroll)
+                <tr>
+                    <td>{{ $payroll->user->name }}</td>
+                    <td>{{ \Carbon\Carbon::parse($payroll->month)->format('Y-m') }}</td>
+                    <td>{{ number_format($payroll->hourly_wage) }}円</td>
+                    <td>{{ number_format($payroll->total_hours, 2) }}h</td>
+                    <td>{{ number_format($payroll->total_pay) }}円</td>
+                </tr>
+            @empty
+                <tr>
+                    <td colspan="5" class="text-center">給与データがありません</td>
+                </tr>
+            @endforelse
+        </tbody>
+    </table>
+
     @if($payrolls->count())
-        <div class="d-flex justify-content-end mt-3">
-            <div class="card bg-success text-white shadow-sm">
-                <div class="card-body">
-                    <strong>総給与:</strong> {{ number_format($payrolls->sum('total_pay')) }}円
-                </div>
-            </div>
+        <div class="mt-3 text-end fw-bold">
+            総給与: {{ number_format($payrolls->sum('total_pay')) }}円
         </div>
     @endif
 </div>
