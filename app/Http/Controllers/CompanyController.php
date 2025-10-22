@@ -4,10 +4,12 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use App\Models\Company;
 use App\Models\User;
 use App\Models\Attendance;
 use App\Models\Store;
+use App\Models\Payroll;
 use Carbon\Carbon;
 
 class CompanyController extends Controller
@@ -16,7 +18,6 @@ class CompanyController extends Controller
     {
         $user = Auth::user();
 
-        // 所属企業チェック
         if ($user->company_id !== $company->id) {
             abort(403, 'アクセス権がありません');
         }
@@ -25,29 +26,20 @@ class CompanyController extends Controller
         $startOfMonth = Carbon::now()->startOfMonth();
         $endOfMonth = Carbon::now()->endOfMonth();
 
-        // 本日の出勤数
         $today_attendance_count = Attendance::whereHas('user', function ($q) use ($company) {
             $q->where('company_id', $company->id);
-        })->whereDate('date', $today) // date カラムを使用
-          ->count();
+        })->whereDate('date', $today)->count();
 
-        // 登録社員数
         $employee_count = User::where('company_id', $company->id)->count();
-
-        // 登録店舗数
         $store_count = Store::where('company_id', $company->id)->count();
 
-        // 今月の出勤数
         $monthly_attendance_count = Attendance::whereHas('user', function ($q) use ($company) {
             $q->where('company_id', $company->id);
-        })->whereBetween('date', [$startOfMonth, $endOfMonth])
-          ->count();
+        })->whereBetween('date', [$startOfMonth, $endOfMonth])->count();
 
-        // 出勤中社員数（退勤していない社員）
         $active_employee_count = Attendance::whereHas('user', function ($q) use ($company) {
             $q->where('company_id', $company->id);
-        })->whereNull('clock_out') // 退勤していない
-          ->count();
+        })->whereNull('clock_out')->count();
 
         return view('company.dashboard', compact(
             'company',
@@ -59,29 +51,80 @@ class CompanyController extends Controller
             'active_employee_count'
         ));
     }
-        public function employees($companyId)
-    {
-        // 会社を取得
-        $company = Company::findOrFail($companyId);
 
-        // その会社に属する従業員を取得
+    public function employees($companyId)
+    {
+        $company = Company::findOrFail($companyId);
         $employees = User::where('company_id', $companyId)->get();
 
-        // ビューに渡す
         return view('company.employees', compact('company', 'employees'));
     }
-public function attendances($companyId)
+
+    public function attendances($companyId)
+    {
+        $company = Company::findOrFail($companyId);
+        $attendances = Attendance::whereHas('user', function ($q) use ($companyId) {
+            $q->where('company_id', $companyId);
+        })->with('user')->get();
+
+        return view('company.attendances', compact('company', 'attendances'));
+    }
+
+    // 勤怠データから給与を生成
+    public function generatePayroll($companyId)
+    {
+        $users = User::where('company_id', $companyId)->get();
+
+        DB::transaction(function() use ($users) {
+            foreach ($users as $user) {
+                $attendances = Attendance::where('user_id', $user->id)->get();
+
+                foreach ($attendances as $attendance) {
+                    $hours = (strtotime($attendance->clock_out) - strtotime($attendance->clock_in)) / 3600;
+                    $hourlyWage = 1000; // 仮の時給
+                    $totalPay = $hours * $hourlyWage;
+
+                    Payroll::updateOrCreate(
+                        ['user_id' => $user->id, 'month' => $attendance->date],
+                        [
+                            'hourly_wage' => $hourlyWage,
+                            'total_hours' => $hours,
+                            'total_pay' => $totalPay
+                        ]
+                    );
+                }
+            }
+        });
+
+        return redirect()->route('company.payrolls', ['id' => $companyId])
+                         ->with('success', '給与データを生成しました');
+    }
+public function payrolls(Request $request, $id)
 {
-    // 会社情報を取得
-    $company = \App\Models\Company::findOrFail($companyId);
+    $company = Company::findOrFail($id);
 
-    // 勤怠情報を取得（例: attendancesテーブルが存在する前提）
-    $attendances = \App\Models\Attendance::whereHas('user', function ($query) use ($companyId) {
-        $query->where('company_id', $companyId);
-    })->with('user')->get();
+    $query = Payroll::whereHas('user', function($q) use ($id) {
+        $q->where('company_id', $id);
+    });
 
-    // ビューへ渡す
-    return view('company.attendances', compact('company', 'attendances'));
+    // 月フィルター
+    if ($request->month) {
+        $month = \Carbon\Carbon::parse($request->month);
+        $query->whereMonth('month', $month->month)
+              ->whereYear('month', $month->year);
+    }
+
+    // 社員フィルター
+    if ($request->user_id) {
+        $query->where('user_id', $request->user_id);
+    }
+
+    $payrolls = $query->with('user')->orderBy('month', 'desc')->get();
+
+    // 会社所属社員リストを追加
+    $users = User::where('company_id', $id)->get();
+
+    return view('company.payrolls', compact('payrolls', 'users'));
 }
 
 }

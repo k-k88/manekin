@@ -14,9 +14,11 @@ return new class extends Migration {
             $table->decimal('total_hours', 8, 2);
             $table->decimal('total_pay', 10, 2);
             $table->date('month');
+            
             $table->timestamps();
 
             $table->foreign('user_id')->references('id')->on('users')->onDelete('cascade');
+            $table->foreign('company_id')->references('id')->on('companies')->onDelete('cascade');
         });
     }
 

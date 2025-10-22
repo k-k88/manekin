@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\LineWebhookController;
+use App\Http\Controllers\PayrollController;
 
 // 🔹 LINE Webhook（CSRF除外）
 Route::post('/line/webhook', [LineWebhookController::class, 'webhook']);
@@ -32,4 +33,17 @@ Route::get('/company/{company}/employees', [App\Http\Controllers\CompanyControll
     
 Route::get('/company/{company}/attendances', [App\Http\Controllers\CompanyController::class, 'attendances'])
     ->name('company.attendances');
+
+// 🔹給与
+Route::get('/payroll', [PayrollController::class, 'index'])->name('payroll.index');
+Route::post('/payroll/calculate', [PayrollController::class, 'calculatePayroll'])->name('payroll.calculate');
+
+
+Route::get('/company/{company}/dashboard', [CompanyController::class, 'dashboard'])->name('company.dashboard');
+Route::get('/company/{id}/employees', [CompanyController::class, 'employees'])->name('company.employees');
+Route::get('/company/{id}/attendances', [CompanyController::class, 'attendances'])->name('company.attendances');
+Route::get('/company/{id}/payrolls', [CompanyController::class, 'payrolls'])->name('company.payrolls');
+Route::get('/company/{id}/generate-payroll', [CompanyController::class, 'generatePayroll'])
+    ->name('company.generatePayroll');
+
 
