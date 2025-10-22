@@ -4,15 +4,28 @@
 <div class="container">
     <h1 class="mb-4">給与一覧</h1>
 
+    {{-- 成功メッセージ --}}
     @if(session('success'))
         <div class="alert alert-success">{{ session('success') }}</div>
     @endif
 
+    {{-- ダッシュボードに戻るボタン --}}
+    <div class="mb-3">
+        <a href="{{ route('company.dashboard', ['company' => request()->route('id')]) }}" class="btn btn-secondary">
+            ダッシュボードに戻る
+        </a>
+    </div>
+
+    {{-- 勤怠から給与生成ボタン --}}
+    <a href="{{ route('company.generatePayroll', ['id' => request()->route('id')]) }}" class="btn btn-success mb-3">
+        勤怠から給与を生成する
+    </a>
+
+    {{-- フィルター --}}
     <form method="GET" class="row mb-3">
         <div class="col-md-3">
             <label for="month" class="form-label">月</label>
-            <input type="month" id="month" name="month" class="form-control"
-                   value="{{ request('month') }}">
+            <input type="month" id="month" name="month" class="form-control" value="{{ request('month') }}">
         </div>
         <div class="col-md-3">
             <label for="user_id" class="form-label">社員</label>
@@ -31,10 +44,7 @@
         </div>
     </form>
 
-    <a href="{{ route('company.generatePayroll', ['id' => request()->route('id')]) }}" class="btn btn-success mb-3">
-        勤怠から給与を生成する
-    </a>
-
+    {{-- 給与テーブル --}}
     <table class="table table-bordered">
         <thead>
             <tr>
@@ -62,6 +72,7 @@
         </tbody>
     </table>
 
+    {{-- 総給与 --}}
     @if($payrolls->count())
         <div class="mt-3 text-end fw-bold">
             総給与: {{ number_format($payrolls->sum('total_pay')) }}円
