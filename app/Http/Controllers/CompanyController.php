@@ -14,10 +14,14 @@ use Carbon\Carbon;
 
 class CompanyController extends Controller
 {
+    // ======================
+    // ✅ ダッシュボード表示
+    // ======================
     public function dashboard(Company $company)
     {
         $user = Auth::user();
 
+        // アクセス制限：他社のデータは閲覧不可
         if ($user->company_id !== $company->id) {
             abort(403, 'アクセス権がありません');
         }
@@ -26,21 +30,38 @@ class CompanyController extends Controller
         $startOfMonth = Carbon::now()->startOfMonth();
         $endOfMonth = Carbon::now()->endOfMonth();
 
+        // ✅ 今日の出勤数
         $today_attendance_count = Attendance::whereHas('user', function ($q) use ($company) {
             $q->where('company_id', $company->id);
         })->whereDate('date', $today)->count();
 
+        // ✅ 登録社員数
         $employee_count = User::where('company_id', $company->id)->count();
+
+        // ✅ 店舗数
         $store_count = Store::where('company_id', $company->id)->count();
 
+        // ✅ 今月の出勤数
         $monthly_attendance_count = Attendance::whereHas('user', function ($q) use ($company) {
             $q->where('company_id', $company->id);
         })->whereBetween('date', [$startOfMonth, $endOfMonth])->count();
 
+        // ✅ 現在出勤中の社員数（退勤していない人）
         $active_employee_count = Attendance::whereHas('user', function ($q) use ($company) {
             $q->where('company_id', $company->id);
         })->whereNull('clock_out')->count();
 
+        // ✅ 最近の出勤ログ（最新10件・日付付き）
+        $recent_attendances = Attendance::whereHas('user', function ($q) use ($company) {
+            $q->where('company_id', $company->id);
+        })
+            ->with('user')
+            ->whereNotNull('clock_in')
+            ->orderBy('clock_in', 'desc')
+            ->take(10)
+            ->get();
+
+        // ✅ Viewへ渡す
         return view('company.dashboard', compact(
             'company',
             'user',
@@ -48,11 +69,18 @@ class CompanyController extends Controller
             'employee_count',
             'store_count',
             'monthly_attendance_count',
-            'active_employee_count'
+            'active_employee_count',
+            'recent_attendances'
         ));
     }
 
+<<<<<<< HEAD
     // 👥 社員一覧
+=======
+    // ======================
+    // 👥 社員一覧
+    // ======================
+>>>>>>> 49fa3d5 (Resolve merge conflict)
     public function employees($companyId)
     {
         $company = Company::findOrFail($companyId);
@@ -61,8 +89,15 @@ class CompanyController extends Controller
         return view('company.employees', compact('company', 'employees'));
     }
 
+<<<<<<< HEAD
     // 🕒 勤怠一覧（月別・社員別フィルター付き）
     public function attendances(Request $request, Company $company)
+=======
+    // ======================
+    // 🕓 勤怠一覧
+    // ======================
+    public function attendances($companyId)
+>>>>>>> 49fa3d5 (Resolve merge conflict)
     {
         $month = $request->input('month', now()->format('Y-m'));
         $userId = $request->input('user_id');
@@ -81,7 +116,13 @@ class CompanyController extends Controller
         return view('company.attendances', compact('company', 'attendances', 'users'));
     }
 
+<<<<<<< HEAD
     // 💰 勤怠データから給与を生成
+=======
+    // ======================
+    // 💰 給与データ生成
+    // ======================
+>>>>>>> 49fa3d5 (Resolve merge conflict)
     public function generatePayroll($companyId)
     {
         $users = User::where('company_id', $companyId)->get();
@@ -91,6 +132,7 @@ class CompanyController extends Controller
                 $attendances = Attendance::where('user_id', $user->id)->get();
 
                 foreach ($attendances as $attendance) {
+<<<<<<< HEAD
                     if (!$attendance->clock_in || !$attendance->clock_out) continue;
 
                     $hours = (strtotime($attendance->clock_out) - strtotime($attendance->clock_in)) / 3600;
@@ -118,6 +160,33 @@ class CompanyController extends Controller
     }
 
     // 💵 給与一覧（月・社員フィルター付き）
+=======
+                    if ($attendance->clock_in && $attendance->clock_out) {
+                        $hours = (strtotime($attendance->clock_out) - strtotime($attendance->clock_in)) / 3600;
+                        $hourlyWage = 1000; // 仮の時給
+                        $totalPay = $hours * $hourlyWage;
+
+                        Payroll::updateOrCreate(
+                            ['user_id' => $user->id, 'month' => $attendance->date],
+                            [
+                                'hourly_wage' => $hourlyWage,
+                                'total_hours' => $hours,
+                                'total_pay' => $totalPay
+                            ]
+                        );
+                    }
+                }
+            }
+        });
+
+        return redirect()->route('company.payrolls', ['id' => $companyId])
+                         ->with('success', '給与データを生成しました');
+    }
+
+    // ======================
+    // 💵 給与一覧（社員別・月別フィルター付き）
+    // ======================
+>>>>>>> 49fa3d5 (Resolve merge conflict)
     public function payrolls(Request $request, $companyId)
     {
         $company = Company::findOrFail($companyId);
@@ -126,12 +195,20 @@ class CompanyController extends Controller
             $q->where('company_id', $companyId);
         });
 
+<<<<<<< HEAD
+=======
+        // 🔹 月フィルター
+>>>>>>> 49fa3d5 (Resolve merge conflict)
         if ($request->month) {
             $month = Carbon::parse($request->month);
             $query->whereMonth('month', $month->month)
                   ->whereYear('month', $month->year);
         }
 
+<<<<<<< HEAD
+=======
+        // 🔹 社員フィルター
+>>>>>>> 49fa3d5 (Resolve merge conflict)
         if ($request->user_id) {
             $query->where('user_id', $request->user_id);
         }
@@ -140,6 +217,7 @@ class CompanyController extends Controller
         $users = User::where('company_id', $companyId)->get();
 
         return view('company.payrolls', compact('payrolls', 'users', 'company'));
+<<<<<<< HEAD
     }
 
     // 👤 社員登録フォーム表示
@@ -174,5 +252,27 @@ class CompanyController extends Controller
 
         return redirect()->route('company.employees', $companyId)
                          ->with('success', '社員を登録しました。');
+=======
+>>>>>>> 49fa3d5 (Resolve merge conflict)
     }
+
+    // ======================
+    // 🔔 最近の出退勤ログ部分ビュー
+    // ======================
+   public function recentLogs(Company $company, Request $request)
+{
+    $date = $request->get('date', Carbon::today()->format('Y-m-d'));
+
+    $recent_attendances = Attendance::whereHas('user', function ($q) use ($company) {
+        $q->where('company_id', $company->id);
+    })
+        ->whereDate('date', $date)
+        ->with('user')
+        ->orderByDesc('updated_at')
+        ->take(10)
+        ->get();
+
+    return view('company.partials.recent_logs', compact('recent_attendances'))->render();
+}
+
 }

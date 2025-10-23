@@ -39,10 +39,45 @@
 
     <hr>
 
-    <div class="text-center">
+    <h4 class="mt-4 mb-3">🕓 出退勤履歴（📅 日付指定 & 🔁 自動更新）</h4>
+
+    <!-- 📅 日付選択＋更新ボタン -->
+    <div class="d-flex align-items-center mb-3 gap-2">
+        <input type="date" id="attendance-date" class="form-control w-auto"
+            value="{{ \Carbon\Carbon::today()->format('Y-m-d') }}">
+        <button id="load-logs" class="btn btn-outline-primary">📅 表示</button>
+    </div>
+
+    <!-- 出退勤ログ表示エリア -->
+    <div style="max-height: 200px; overflow-y: auto;" class="card shadow-sm" id="attendance-log">
+        @include('company.partials.recent_logs')
+    </div>
+
+    <div class="text-center mt-4">
         <a href="{{ route('company.employees', $company->id) }}" class="btn btn-primary m-2">👥 社員一覧</a>
         <a href="{{ route('company.attendances', $company->id) }}" class="btn btn-success m-2">🕓 勤怠一覧</a>
         <a href="{{ route('company.payrolls', $company->id) }}" class="btn btn-warning m-2">💰 給与一覧</a>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const logContainer = document.getElementById('attendance-log');
+    const dateInput = document.getElementById('attendance-date');
+    const loadButton = document.getElementById('load-logs');
+
+    async function fetchLogs() {
+        const date = dateInput.value;
+        const response = await fetch("{{ route('company.recentLogs', $company->id) }}?date=" + date);
+        const html = await response.text();
+        logContainer.innerHTML = html;
+    }
+
+    // ✅ ボタンクリックで更新
+    loadButton.addEventListener('click', fetchLogs);
+
+    // ✅ 30秒ごとに自動更新
+    setInterval(fetchLogs, 30000);
+});
+</script>
 @endsection

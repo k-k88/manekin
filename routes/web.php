@@ -61,3 +61,5 @@ Route::get('/company/{company}/users/create', [CompanyController::class, 'create
 Route::post('/company/{company}/users', [CompanyController::class, 'storeUser'])
     ->name('company.users.store');
 
+Route::get('/company/{company}/recent-logs', [CompanyController::class, 'recentLogs'])
+    ->name('company.recentLogs');

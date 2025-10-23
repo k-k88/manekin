@@ -1,0 +1,65 @@
+@startuml
+title 図書返却シーケンス図
+
+actor 事務職員
+boundary "返却一覧画面" as 返却一覧画面
+boundary "返却完了画面" as 返却完了画面
+boundary "エラーメッセージ画面" as エラーメッセージ画面
+control "会員チェック" as 会員チェック
+control "図書チェック" as 図書チェック
+control "返却処理" as 返却処理
+entity "会員" as 会員
+entity "図書" as 図書
+entity "貸出情報" as 貸出情報
+entity "予約情報" as 予約情報
+
+'--- 基本フロー ---
+事務職員 -> 返却一覧画面 : openReturnMenu()
+返却一覧画面 -> 事務職員 : displayReturnListScreen()
+
+事務職員 -> 返却一覧画面 : enterCopyId(copyId)
+返却一覧画面 -> 会員チェック : verifyMemberByCopy(copyId)
+会員チェック -> 会員 : findByLoan(copyId)
+会員 --> 会員チェック
+
+返却一覧画面 -> 図書チェック : verifyBook(copyId)
+図書チェック -> 図書 : findByCopyId(copyId)
+図書 --> 図書チェック
+
+返却一覧画面 -> 返却処理 : checkOverdue(copyId)
+返却処理 -> 貸出情報 : findLoanByCopyId(copyId)
+貸出情報 --> 返却処理
+
+返却一覧画面 -> 返却処理 : pressReturnButton()
+返却処理 -> 図書 : updateStatus("Available")
+返却処理 -> 貸出情報 : updateReturnDate(today)
+
+alt 正常またはエラー処理まとめ
+    ' 会員情報がない場合
+    会員 --> 会員チェック : null
+    会員チェック -> エラーメッセージ画面 : "会員情報が不正です"
+
+    ' 図書未登録
+    図書 --> 図書チェック : null
+    図書チェック -> エラーメッセージ画面 : "管理番号を確認してください"
+
+    ' 貸出されていない場合
+    貸出情報 --> 返却処理 : null
+    返却処理 -> エラーメッセージ画面 : "貸出されていない図書です"
+
+    ' 返却期限超過
+    返却処理 -> エラーメッセージ画面 : "返却期限を過ぎています"
+
+    ' 予約あり
+    返却処理 -> 予約情報 : getOldestReservation(copyId)
+    予約情報 --> 返却処理
+    返却処理 -> 予約情報 : notifyMember()
+    返却処理 -> エラーメッセージ画面 : "この図書は予約されています"
+    
+    ' 正常返却
+    会員 --> 返却処理
+    図書 --> 返却処理
+    返却処理 -> 返却完了画面 : displayReturnComplete()
+end
+
+@enduml
