@@ -56,3 +56,8 @@ Route::middleware(['auth'])->group(function () {
         ->name('company.employees.store');
 });
 
+Route::get('/company/{company}/users/create', [CompanyController::class, 'createUser'])
+    ->name('company.users.create');
+Route::post('/company/{company}/users', [CompanyController::class, 'storeUser'])
+    ->name('company.users.store');
+

@@ -52,6 +52,7 @@ class CompanyController extends Controller
         ));
     }
 
+    // 👥 社員一覧
     public function employees($companyId)
     {
         $company = Company::findOrFail($companyId);
@@ -60,61 +61,63 @@ class CompanyController extends Controller
         return view('company.employees', compact('company', 'employees'));
     }
 
+    // 🕒 勤怠一覧（月別・社員別フィルター付き）
     public function attendances(Request $request, Company $company)
-{
-    $month = $request->input('month', now()->format('Y-m'));
-    $userId = $request->input('user_id');
+    {
+        $month = $request->input('month', now()->format('Y-m'));
+        $userId = $request->input('user_id');
 
-    // 会社の社員一覧
-    $users = $company->users()->get();
+        $users = $company->users()->get();
 
-    // 勤怠データ取得
-    $attendances = \App\Models\Attendance::whereHas('user', function ($query) use ($company) {
-        $query->where('company_id', $company->id);
-    })
-    ->when($userId, fn($q) => $q->where('user_id', $userId))
-    ->when($month, fn($q) => $q->where('date', 'like', $month . '%'))
-    ->with('user')
-    ->orderBy('date', 'desc')
-    ->get();
+        $attendances = Attendance::whereHas('user', function ($query) use ($company) {
+            $query->where('company_id', $company->id);
+        })
+        ->when($userId, fn($q) => $q->where('user_id', $userId))
+        ->when($month, fn($q) => $q->where('date', 'like', $month . '%'))
+        ->with('user')
+        ->orderBy('date', 'desc')
+        ->get();
 
-    return view('company.attendances', compact('company', 'attendances', 'users'));
-}
+        return view('company.attendances', compact('company', 'attendances', 'users'));
+    }
 
-
-
-      // 勤怠データから給与を生成
+    // 💰 勤怠データから給与を生成
     public function generatePayroll($companyId)
     {
         $users = User::where('company_id', $companyId)->get();
- 
+
         DB::transaction(function() use ($users) {
             foreach ($users as $user) {
                 $attendances = Attendance::where('user_id', $user->id)->get();
- 
+
                 foreach ($attendances as $attendance) {
+                    if (!$attendance->clock_in || !$attendance->clock_out) continue;
+
                     $hours = (strtotime($attendance->clock_out) - strtotime($attendance->clock_in)) / 3600;
                     $hourlyWage = 1000; // 仮の時給
                     $totalPay = $hours * $hourlyWage;
- 
+
                     Payroll::updateOrCreate(
-                        ['user_id' => $user->id, 'month' => $attendance->date],
                         [
-                            'hourly_wage' => $hourlyWage,
-                            'total_hours' => $hours,
-                            'total_pay' => $totalPay
+                           'user_id' => $user->id, 
+                           'month' => date('Y-m-01', strtotime($attendance->date)) // ← 修正
+                        ],
+                        [
+                           'hourly_wage' => $hourlyWage,
+                           'total_hours' => $hours,
+                           'total_pay' => $totalPay,
                         ]
+
                     );
                 }
             }
         });
- 
-        return redirect()->route('company.payrolls', ['id' => $companyId])
-                         ->with('success', '給与データを生成しました');
-    }
- 
 
-    // 給与一覧（社員別・月別フィルター付き）
+        return redirect()->route('company.payrolls', ['id' => $companyId])
+                         ->with('success', '給与データを生成しました。');
+    }
+
+    // 💵 給与一覧（月・社員フィルター付き）
     public function payrolls(Request $request, $companyId)
     {
         $company = Company::findOrFail($companyId);
@@ -123,14 +126,12 @@ class CompanyController extends Controller
             $q->where('company_id', $companyId);
         });
 
-        // 月フィルター
         if ($request->month) {
             $month = Carbon::parse($request->month);
             $query->whereMonth('month', $month->month)
                   ->whereYear('month', $month->year);
         }
 
-        // 社員フィルター
         if ($request->user_id) {
             $query->where('user_id', $request->user_id);
         }
@@ -138,42 +139,40 @@ class CompanyController extends Controller
         $payrolls = $query->with('user')->orderBy('month', 'desc')->get();
         $users = User::where('company_id', $companyId)->get();
 
-        return view('company.payrolls', compact('payrolls', 'users'));
+        return view('company.payrolls', compact('payrolls', 'users', 'company'));
     }
 
+    // 👤 社員登録フォーム表示
     public function createEmployee($companyId)
-{
-    $company = Company::findOrFail($companyId);
+    {
+        $company = Company::findOrFail($companyId);
+        $stores = Store::where('company_id', $companyId)->get(); // ✅ ← これが大事！
 
-    // 所属チェック（管理者のみ）
-    $user = Auth::user();
-    if ($user->company_id !== $company->id) {
-        abort(403, 'アクセス権がありません');
+        return view('company.employees_create', compact('company', 'stores'));
     }
 
-    return view('company.employees_create', compact('company'));
-}
+    // 👤 社員登録処理
+    public function storeEmployee(Request $request, $companyId)
+    {
+        $company = Company::findOrFail($companyId);
 
-public function storeEmployee(Request $request, $companyId)
-{
-    $company = Company::findOrFail($companyId);
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'email' => 'required|email|unique:users,email',
+            'password' => 'required|string|min:6|confirmed',
+            'phone' => 'nullable|string|max:20',
+            'role' => 'required|string|in:employee,manager,admin',
+            'store_id' => 'required|exists:stores,id',
+            'hire_date' => 'required|date',
+        ]);
 
-    $validated = $request->validate([
-        'name' => 'required|string|max:255',
-        'email' => 'required|email|unique:users,email',
-        'password' => 'required|string|min:6|confirmed',
-        'phone' => 'nullable|string|max:20',
-        'role' => 'required|string|in:employee,manager,admin',
-    ]);
+        $validated['company_id'] = $companyId;
+        $validated['password'] = bcrypt($validated['password']);
+        $validated['status'] = 'active';
 
-    $validated['company_id'] = $companyId;
-    $validated['password'] = bcrypt($validated['password']);
-    $validated['status'] = 'active';
+        User::create($validated);
 
-    User::create($validated);
-
-    return redirect()->route('company.employees', $companyId)
-                     ->with('success', '社員を登録しました。');
-}
-
+        return redirect()->route('company.employees', $companyId)
+                         ->with('success', '社員を登録しました。');
+    }
 }
