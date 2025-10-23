@@ -46,4 +46,13 @@ Route::get('/company/{id}/payrolls', [CompanyController::class, 'payrolls'])->na
 Route::get('/company/{id}/generate-payroll', [CompanyController::class, 'generatePayroll'])
     ->name('company.generatePayroll');
 
+// 社員管理ルート
+Route::middleware(['auth'])->group(function () {
+    Route::get('/company/{company}/employees', [App\Http\Controllers\CompanyController::class, 'employees'])
+        ->name('company.employees');
+    Route::get('/company/{company}/employees/create', [App\Http\Controllers\CompanyController::class, 'createEmployee'])
+        ->name('company.employees.create');
+    Route::post('/company/{company}/employees', [App\Http\Controllers\CompanyController::class, 'storeEmployee'])
+        ->name('company.employees.store');
+});
 

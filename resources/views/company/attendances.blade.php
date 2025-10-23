@@ -1,4 +1,3 @@
-{{-- resources/views/company/attendances.blade.php --}}
 @extends('layouts.app')
 
 @section('content')
@@ -6,14 +5,34 @@
     <h2 class="mb-4">🕒 {{ $company->name }} 勤怠一覧</h2>
 
     <div class="mb-3">
-        <a href="{{ route('company.dashboard', $company->id) }}" class="btn btn-secondary">← ダッシュボードに戻る</a>
+        <a href="{{ route('company.dashboard', $company->id) }}" class="btn btn-secondary">
+            ← ダッシュボードに戻る
+        </a>
     </div>
 
-    <form method="GET" class="mb-3 d-flex gap-2 align-items-center">
-        <input type="month" name="month" value="{{ request('month', now()->format('Y-m')) }}" class="form-control w-auto">
+    {{-- ✅ 月＆社員フィルター --}}
+    <form method="GET" class="mb-3 d-flex gap-2 align-items-center flex-wrap">
+        <input 
+            type="month" 
+            name="month" 
+            value="{{ request('month', now()->format('Y-m')) }}" 
+            class="form-control w-auto"
+        >
+
+        <select name="user_id" class="form-select w-auto">
+            <option value="">全社員</option>
+            @foreach($users as $user)
+                <option value="{{ $user->id }}" {{ request('user_id') == $user->id ? 'selected' : '' }}>
+                    {{ $user->name }}
+                </option>
+            @endforeach
+        </select>
+
         <button type="submit" class="btn btn-primary">表示</button>
+        <a href="{{ route('company.attendances', $company->id) }}" class="btn btn-outline-secondary">リセット</a>
     </form>
 
+    {{-- ✅ 勤怠一覧テーブル --}}
     <table class="table table-bordered table-hover align-middle shadow-sm">
         <thead class="table-light">
             <tr>

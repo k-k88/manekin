@@ -3,11 +3,22 @@
 
 @section('content')
 <div class="container mt-4">
-    <h2 class="mb-4">👥 {{ $company->name }} 社員一覧</h2>
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="mb-0">👥 {{ $company->name }} 社員一覧</h2>
+        <a href="{{ route('company.employees.create', $company->id) }}" class="btn btn-success">
+            ＋ 社員登録
+        </a>
+    </div>
 
     <div class="mb-3">
-        <a href="{{ route('company.dashboard', $company->id) }}" class="btn btn-secondary">← ダッシュボードに戻る</a>
+        <a href="{{ route('company.dashboard', $company->id) }}" class="btn btn-secondary">
+            ← ダッシュボードに戻る
+        </a>
     </div>
+
+    @if (session('success'))
+        <div class="alert alert-success">{{ session('success') }}</div>
+    @endif
 
     <table class="table table-bordered table-hover align-middle shadow-sm">
         <thead class="table-light">
@@ -32,6 +43,8 @@
                     <td>
                         @if ($employee->role === 'company_admin')
                             <span class="badge bg-danger">管理者</span>
+                        @elseif ($employee->role === 'manager')
+                            <span class="badge bg-warning text-dark">店長</span>
                         @else
                             <span class="badge bg-primary">従業員</span>
                         @endif

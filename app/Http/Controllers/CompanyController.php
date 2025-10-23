@@ -60,15 +60,28 @@ class CompanyController extends Controller
         return view('company.employees', compact('company', 'employees'));
     }
 
-    public function attendances($companyId)
-    {
-        $company = Company::findOrFail($companyId);
-        $attendances = Attendance::whereHas('user', function ($q) use ($companyId) {
-            $q->where('company_id', $companyId);
-        })->with('user')->get();
+    public function attendances(Request $request, Company $company)
+{
+    $month = $request->input('month', now()->format('Y-m'));
+    $userId = $request->input('user_id');
 
-        return view('company.attendances', compact('company', 'attendances'));
-    }
+    // 会社の社員一覧
+    $users = $company->users()->get();
+
+    // 勤怠データ取得
+    $attendances = \App\Models\Attendance::whereHas('user', function ($query) use ($company) {
+        $query->where('company_id', $company->id);
+    })
+    ->when($userId, fn($q) => $q->where('user_id', $userId))
+    ->when($month, fn($q) => $q->where('date', 'like', $month . '%'))
+    ->with('user')
+    ->orderBy('date', 'desc')
+    ->get();
+
+    return view('company.attendances', compact('company', 'attendances', 'users'));
+}
+
+
 
       // 勤怠データから給与を生成
     public function generatePayroll($companyId)
@@ -127,4 +140,40 @@ class CompanyController extends Controller
 
         return view('company.payrolls', compact('payrolls', 'users'));
     }
+
+    public function createEmployee($companyId)
+{
+    $company = Company::findOrFail($companyId);
+
+    // 所属チェック（管理者のみ）
+    $user = Auth::user();
+    if ($user->company_id !== $company->id) {
+        abort(403, 'アクセス権がありません');
+    }
+
+    return view('company.employees_create', compact('company'));
+}
+
+public function storeEmployee(Request $request, $companyId)
+{
+    $company = Company::findOrFail($companyId);
+
+    $validated = $request->validate([
+        'name' => 'required|string|max:255',
+        'email' => 'required|email|unique:users,email',
+        'password' => 'required|string|min:6|confirmed',
+        'phone' => 'nullable|string|max:20',
+        'role' => 'required|string|in:employee,manager,admin',
+    ]);
+
+    $validated['company_id'] = $companyId;
+    $validated['password'] = bcrypt($validated['password']);
+    $validated['status'] = 'active';
+
+    User::create($validated);
+
+    return redirect()->route('company.employees', $companyId)
+                     ->with('success', '社員を登録しました。');
+}
+
 }
