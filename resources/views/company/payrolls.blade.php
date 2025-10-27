@@ -10,6 +10,13 @@
         </a>
     </div>
 
+    {{-- フラッシュメッセージ --}}
+    @if(session('success'))
+        <div class="alert alert-success">
+            {{ session('success') }}
+        </div>
+    @endif
+
     {{-- フィルター --}}
     <form method="GET" class="mb-3 d-flex gap-2 align-items-end flex-wrap">
         <div>
@@ -40,12 +47,9 @@
 
     {{-- CSV出力 --}}
     <a href="{{ route('company.payrollsCsv', ['company' => $company->id, 'month' => request('month')]) }}"
-   class="btn btn-info mb-3">
-   CSVでダウンロード
-</a>
-
-</a>
-
+       class="btn btn-info mb-3">
+       CSVでダウンロード
+    </a>
 
     {{-- 給与テーブル --}}
     <table class="table table-bordered table-hover align-middle shadow-sm">
