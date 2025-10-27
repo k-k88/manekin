@@ -375,6 +375,37 @@ public function payrollsCsv(Company $company)
             ->header('Content-Disposition', "attachment; filename={$filename}");
 }
 
+// 勤怠追加フォーム表示
+public function createAttendance(Company $company)
+{
+    $users = $company->users()->get();
+    return view('company.attendances_create', compact('company', 'users'));
+}
+
+
+// 保存処理
+public function storeAttendance(Request $request, Company $company)
+{
+    $validated = $request->validate([
+        'user_id' => 'required|exists:users,id',
+        'date' => 'required|date',
+        'clock_in' => 'nullable|date_format:H:i',
+        'clock_out' => 'nullable|date_format:H:i|after:clock_in',
+    ]);
+
+    Attendance::create([
+        'user_id' => $validated['user_id'],
+        'company_id' => $company->id,
+        'date' => $validated['date'],
+        'clock_in' => $validated['clock_in'],
+        'clock_out' => $validated['clock_out'],
+    ]);
+
+    return redirect()->route('company.attendances', ['company' => $company->id])
+                     ->with('success', '勤怠を追加しました。');
+}
+
+
 
 
 
