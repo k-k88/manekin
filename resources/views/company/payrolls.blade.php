@@ -1,3 +1,4 @@
+{{-- resources/views/company/payrolls.blade.php --}}
 @extends('layouts.app')
 
 @section('content')
@@ -14,7 +15,8 @@
     <form method="GET" class="mb-3 d-flex gap-2 align-items-end flex-wrap">
         <div>
             <label for="month">月</label>
-            <input type="month" id="month" name="month" class="form-control" value="{{ request('month', now()->format('Y-m')) }}">
+            <input type="month" id="month" name="month" class="form-control" 
+                   value="{{ request('month', now()->format('Y-m')) }}">
         </div>
         <div>
             <label for="user_id">社員</label>
@@ -29,23 +31,30 @@
         </div>
         <div class="align-self-end">
             <button type="submit" class="btn btn-primary">表示</button>
-            <a href="{{ route('company.payrolls', ['company' => $company->id]) }}" class="btn btn-outline-secondary">リセット</a>
+            <a href="{{ route('company.payrolls', ['company' => $company->id]) }}" 
+               class="btn btn-outline-secondary">
+               リセット
+            </a>
         </div>
     </form>
 
     {{-- 勤怠から給与生成ボタン --}}
-    <a href="{{ route('company.generatePayroll', ['company' => $company->id]) }}" class="btn btn-success mb-3">
+    <a href="{{ route('company.generatePayroll', ['company' => $company->id]) }}" 
+       class="btn btn-success mb-3">
         勤怠から給与を生成する
+    </a>
+
+    {{-- PDF出力 --}}
+    <a href="{{ route('company.payrollsPdf', ['company' => $company->id, 'month' => request('month')]) }}"
+       class="btn btn-danger mb-3">
+        PDFでダウンロード
     </a>
 
     {{-- CSV出力 --}}
     <a href="{{ route('company.payrollsCsv', ['company' => $company->id, 'month' => request('month')]) }}"
-   class="btn btn-info mb-3">
-   CSVでダウンロード
-</a>
-
-</a>
-
+       class="btn btn-info mb-3">
+        CSVでダウンロード
+    </a>
 
     {{-- 給与テーブル --}}
     <table class="table table-bordered table-hover align-middle shadow-sm">
@@ -66,7 +75,8 @@
                     $hours = 0;
                     $pay = 0;
                     if ($attendance->clock_in && $attendance->clock_out) {
-                        $hours = \Carbon\Carbon::parse($attendance->clock_in)->diffInMinutes($attendance->clock_out) / 60;
+                        $hours = \Carbon\Carbon::parse($attendance->clock_in)
+                            ->diffInMinutes($attendance->clock_out) / 60;
                         $pay = $hours * $hourlyWage;
                     }
                 @endphp
@@ -92,7 +102,8 @@
         @php
             $totalPay = $attendances->sum(function($a) use ($hourlyWage) {
                 if ($a->clock_in && $a->clock_out) {
-                    $hours = \Carbon\Carbon::parse($a->clock_in)->diffInMinutes($a->clock_out) / 60;
+                    $hours = \Carbon\Carbon::parse($a->clock_in)
+                        ->diffInMinutes($a->clock_out) / 60;
                     return $hours * $hourlyWage;
                 }
                 return 0;
