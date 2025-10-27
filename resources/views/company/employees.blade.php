@@ -62,9 +62,7 @@
                     <td class="d-flex gap-1">
                         {{-- 編集ボタン --}}
                         <a href="{{ route('company.employees.edit', ['company' => $company->id, 'employee' => $employee->id]) }}" 
-                           class="btn btn-sm btn-warning">
-                           編集
-                        </a>
+                           class="btn btn-sm btn-warning">編集</a>
 
                         {{-- 削除ボタン --}}
                         <form action="{{ route('company.employees.delete', ['company' => $company->id, 'employee' => $employee->id]) }}"

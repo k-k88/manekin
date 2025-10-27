@@ -5,7 +5,7 @@
     <h2 class="mb-4">💰 {{ $company->name }} 日別給与一覧</h2>
 
     <div class="mb-3">
-        <a href="{{ route('company.dashboard', $company->id) }}" class="btn btn-secondary">
+        <a href="{{ route('company.dashboard', ['company' => $company->id]) }}" class="btn btn-secondary">
             ← ダッシュボードに戻る
         </a>
     </div>
@@ -29,20 +29,22 @@
         </div>
         <div class="align-self-end">
             <button type="submit" class="btn btn-primary">表示</button>
-            <a href="{{ route('company.payrolls', ['id' => $company->id]) }}" class="btn btn-outline-secondary">リセット</a>
+            <a href="{{ route('company.payrolls', ['company' => $company->id]) }}" class="btn btn-outline-secondary">リセット</a>
         </div>
     </form>
 
     {{-- 勤怠から給与生成ボタン --}}
-    <a href="{{ route('company.generatePayroll', ['id' => $company->id]) }}" class="btn btn-success mb-3">
-    勤怠から給与を生成する
+    <a href="{{ route('company.generatePayroll', ['company' => $company->id]) }}" class="btn btn-success mb-3">
+        勤怠から給与を生成する
     </a>
 
+    {{-- CSV出力 --}}
+    <a href="{{ route('company.payrollsCsv', ['company' => $company->id, 'month' => request('month')]) }}"
+   class="btn btn-info mb-3">
+   CSVでダウンロード
+</a>
 
-    <a href="{{ route('company.payrollsPdf', ['id' => $company->id, 'month' => request('month')]) }}"
-      class="btn btn-danger mb-3">
-      PDFでダウンロード
-    </a>
+</a>
 
 
     {{-- 給与テーブル --}}

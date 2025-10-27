@@ -303,5 +303,44 @@ public function deleteEmployee($companyId, $employeeId)
                      ->with('success', '社員を削除しました。');
 }
 
+public function payrollsCsv(Company $company)
+{
+    $month = request('month', now()->format('Y-m'));
+    $attendances = $company->attendances()
+                           ->whereYear('date', \Carbon\Carbon::parse($month)->year)
+                           ->whereMonth('date', \Carbon\Carbon::parse($month)->month)
+                           ->get();
+
+    $hourlyWage = 1200; // 例: 固定時給、必要に応じて社員ごとに取得
+
+    $csvData = "社員名,日付,出勤,退勤,勤務時間,時給,給与\n";
+
+    foreach ($attendances as $attendance) {
+        if (!$attendance->clock_in || !$attendance->clock_out) continue;
+
+        $hours = \Carbon\Carbon::parse($attendance->clock_in)
+                 ->diffInMinutes($attendance->clock_out) / 60;
+        $pay = $hours * $hourlyWage;
+
+        $csvData .= "{$attendance->user->name}," .
+                    \Carbon\Carbon::parse($attendance->date)->format('Y/m/d') . "," .
+                    \Carbon\Carbon::parse($attendance->clock_in)->format('H:i') . "," .
+                    \Carbon\Carbon::parse($attendance->clock_out)->format('H:i') . "," .
+                    number_format($hours, 2) . "," .
+                    $hourlyWage . "," .
+                    $pay . "\n";
+    }
+
+    $csvData = mb_convert_encoding($csvData, 'SJIS-win', 'UTF-8');
+
+    $filename = $company->name . '-' . str_replace('-', '', $month) . '.csv';
+
+    return response($csvData)
+            ->header('Content-Type', 'text/csv')
+            ->header('Content-Disposition', "attachment; filename={$filename}");
+}
+
+
+
 
 }
