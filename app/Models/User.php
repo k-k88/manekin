@@ -5,12 +5,12 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
-use Illuminate\Database\Eloquent\SoftDeletes; // ← 追加！
-use Illuminate\Http\Request; 
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Http\Request;
 
 class User extends Authenticatable
 {
-    use HasFactory, Notifiable, SoftDeletes; // ← ここに追加！
+    use HasFactory, Notifiable, SoftDeletes;
 
     protected $fillable = [
         'name',
@@ -76,10 +76,29 @@ class User extends Authenticatable
         $validated['password'] = bcrypt($validated['password']);
         $validated['company_id'] = $company->id;
         $validated['role'] = 'employee';
+        $validated['status'] = 'active';
 
         User::create($validated);
 
         return redirect()->route('company.users', $company->id)
             ->with('success', '社員を登録しました。');
+    }
+
+    /**
+     * ✅ SoftDelete時にステータスを inactive に変更
+     * ✅ 復元時に active に戻す
+     */
+    protected static function booted()
+    {
+        static::deleting(function ($user) {
+            if (! $user->isForceDeleting()) {
+                $user->status = 'inactive';
+                $user->saveQuietly(); // イベント再発防止
+            }
+        });
+
+        static::restoring(function ($user) {
+            $user->status = 'active';
+        });
     }
 }
