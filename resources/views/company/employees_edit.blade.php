@@ -22,7 +22,16 @@
         {{-- 電話番号 --}}
         <div class="mb-3">
             <label class="form-label">電話番号</label>
-            <input type="text" name="phone" class="form-control" value="{{ old('phone', $employee->phone) }}">
+            <input
+                type="text"
+                name="phone"
+                id="phoneInput"  {{-- ← これをフォーム内の要素に付ける --}}
+                class="form-control"
+                value="{{ old('phone', $employee->phone) }}"
+                placeholder="例: 090-1234-5678"
+                pattern="\d{2,4}-\d{2,4}-\d{3,4}"
+                title="000-0000-0000 の形式で入力してください"
+            >
         </div>
 
         {{-- 所属店舗 --}}
@@ -47,4 +56,18 @@
         <a href="{{ route('company.employees', $company->id) }}" class="btn btn-secondary">戻る</a>
     </form>
 </div>
+
+{{-- 自動ハイフンスクリプト --}}
+<script>
+document.getElementById('phoneInput').addEventListener('input', e => {
+    let v = e.target.value.replace(/\D/g, ''); // 数字以外削除
+    if (v.length > 3 && v.length <= 7) {
+        e.target.value = v.replace(/(\d{3})(\d+)/, '$1-$2');
+    } else if (v.length > 7) {
+        e.target.value = v.replace(/(\d{3})(\d{4})(\d+)/, '$1-$2-$3');
+    } else {
+        e.target.value = v;
+    }
+});
+</script>
 @endsection

@@ -7,16 +7,16 @@
     <div class="mb-3">
 <a href="{{ route('company.dashboard', ['company' => $company->id]) }}" class="btn btn-secondary">
             ← ダッシュボードに戻る
-</a>
-</div>
- 
+        </a>
+    </div>
+
     {{-- フラッシュメッセージ --}}
     @if(session('success'))
-<div class="alert alert-success">
+        <div class="alert alert-success">
             {{ session('success') }}
-</div>
+        </div>
     @endif
- 
+
     {{-- フィルター --}}
 <form method="GET" class="mb-3 d-flex gap-2 align-items-end flex-wrap">
 <div>
@@ -46,11 +46,11 @@
 </a>
  
     {{-- CSV出力 --}}
-<a href="{{ route('company.payrollsCsv', ['company' => $company->id, 'month' => request('month')]) }}"
+    <a href="{{ route('company.payrollsCsv', ['company' => $company->id, 'month' => request('month')]) }}"
        class="btn btn-info mb-3">
        CSVでダウンロード
-</a>
- 
+    </a>
+
     {{-- 給与テーブル --}}
 <table class="table table-bordered table-hover align-middle shadow-sm">
 <thead class="table-light">

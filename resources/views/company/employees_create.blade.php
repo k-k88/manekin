@@ -36,7 +36,16 @@
         {{-- 電話番号 --}}
         <div class="mb-3">
             <label class="form-label">電話番号</label>
-            <input type="text" name="phone" class="form-control" value="{{ old('phone') }}">
+            <input
+                type="text"
+                name="phone"
+                id="phoneInput"
+                class="form-control"
+                value="{{ old('phone') }}"
+                placeholder="例: 090-1234-5678"
+                pattern="\d{2,4}-\d{2,4}-\d{3,4}"
+                title="000-0000-0000 の形式で入力してください"
+            >
         </div>
 
         {{-- 所属店舗 --}}
@@ -83,4 +92,18 @@
         <button type="submit" class="btn btn-primary">登録する</button>
     </form>
 </div>
+
+{{-- 電話番号の自動ハイフン挿入 --}}
+<script>
+document.getElementById('phoneInput').addEventListener('input', e => {
+    let v = e.target.value.replace(/\D/g, ''); // 数字以外を除去
+    if (v.length > 3 && v.length <= 7) {
+        e.target.value = v.replace(/(\d{3})(\d+)/, '$1-$2');
+    } else if (v.length > 7) {
+        e.target.value = v.replace(/(\d{3})(\d{4})(\d+)/, '$1-$2-$3');
+    } else {
+        e.target.value = v;
+    }
+});
+</script>
 @endsection
