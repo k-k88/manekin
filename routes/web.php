@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\LineWebhookController;
+
 use App\Http\Controllers\PayrollController;
 
 // 🔹 LINE Webhook（CSRF除外）
@@ -69,3 +70,9 @@ Route::delete('/companies/{company}/employees/{employee}', [App\Http\Controllers
 
 Route::delete('/companies/{company}/employees/{employee}', [CompanyController::class, 'deleteEmployee'])
     ->name('company.employees.delete');
+    // 🔹 勤怠データ削除ルート
+Route::delete('/company/{company}/attendances/{attendance}', [CompanyController::class, 'destroyAttendance'])
+    ->name('company.attendances.destroy');
+
+Route::get('/company/{id}/payrolls/pdf', [CompanyController::class, 'payrollsPdf'])
+    ->name('company.payrollsPdf');
