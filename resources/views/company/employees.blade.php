@@ -58,6 +58,10 @@
                             <span class="badge bg-secondary">退職</span>
                         @endif
                     </td>
+                    <td>
+                        <a href="{{ route('company.employees.edit', ['company' => $company->id, 'employee' => $employee->id]) }}" class="btn btn-sm btn-warning">編集</a>
+                    </td>
+
                 </tr>
             @empty
                 <tr>

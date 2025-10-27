@@ -63,3 +63,12 @@ Route::post('/company/{company}/users', [CompanyController::class, 'storeUser'])
 
 Route::get('/company/{company}/recent-logs', [CompanyController::class, 'recentLogs'])
     ->name('company.recentLogs');
+
+Route::get('/company/{company}/employees/{employee}/edit', [CompanyController::class, 'editEmployee'])->name('company.employees.edit');
+Route::post('/company/{company}/employees/{employee}', [CompanyController::class, 'updateEmployee'])->name('company.employees.update');
+
+
+Route::delete('/company/{company}/attendances/{attendance}', [App\Http\Controllers\CompanyController::class, 'destroyAttendance'])
+    ->name('company.attendances.destroy');
+
+Route::get('/company/{id}/payrolls/pdf', [CompanyController::class, 'payrollsPdf'])->name('company.payrollsPdf');

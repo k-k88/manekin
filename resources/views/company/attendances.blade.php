@@ -42,6 +42,7 @@
                 <th>退勤時刻</th>
                 <th>勤務時間</th>
                 <th>ステータス</th>
+                <th>操作</th> {{-- 👈 新しく操作列を追加 --}}
             </tr>
         </thead>
         <tbody>
@@ -67,10 +68,21 @@
                             <span class="badge bg-secondary">未申請</span>
                         @endif
                     </td>
+                    {{-- ✅ ステータスの右に削除ボタン --}}
+                    <td>
+                        <form action="{{ route('company.attendances.destroy', ['company' => $company->id, 'attendance' => $attendance->id]) }}"
+                              method="POST"
+                              onsubmit="return confirm('この勤怠データを削除しますか？');"
+                              style="display:inline;">
+                            @csrf
+                            @method('DELETE')
+                            <button type="submit" class="btn btn-sm btn-danger">削除</button>
+                        </form>
+                    </td>
                 </tr>
             @empty
                 <tr>
-                    <td colspan="6" class="text-center text-muted">勤怠データがありません。</td>
+                    <td colspan="7" class="text-center text-muted">勤怠データがありません。</td>
                 </tr>
             @endforelse
         </tbody>

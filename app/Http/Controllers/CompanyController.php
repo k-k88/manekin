@@ -11,6 +11,7 @@ use App\Models\Attendance;
 use App\Models\Payroll;
 use App\Models\Store;
 use Carbon\Carbon;
+use Barryvdh\DomPDF\Facade\Pdf; // ← 追加
 
 class CompanyController extends Controller
 {
@@ -103,6 +104,20 @@ class CompanyController extends Controller
         return view('company.attendances', compact('company', 'attendances', 'users'));
     }
 
+    public function destroyAttendance(Company $company, Attendance $attendance)
+{
+    // 会社チェック：他社データの削除防止
+    if ($attendance->user->company_id !== $company->id) {
+        abort(403, '他社の勤怠データは削除できません。');
+    }
+
+    $attendance->delete();
+
+    return redirect()->route('company.attendances', $company->id)
+                     ->with('success', '勤怠データを削除しました。');
+}
+
+
     // 💰 勤怠データから給与を生成
     public function generatePayroll($companyId)
     {
@@ -141,28 +156,34 @@ class CompanyController extends Controller
 
     // 💵 給与一覧（月・社員フィルター付き）
     public function payrolls(Request $request, $companyId)
-    {
-        $company = Company::findOrFail($companyId);
+{
+    $company = Company::findOrFail($companyId);
 
-        $query = Payroll::whereHas('user', function($q) use ($companyId) {
-            $q->where('company_id', $companyId);
-        });
+    // Attendance から日別データ取得
+    $query = Attendance::with('user')
+        ->whereHas('user', fn($q) => $q->where('company_id', $companyId))
+        ->whereNotNull('clock_in')
+        ->whereNotNull('clock_out');
 
-        if ($request->month) {
-            $month = Carbon::parse($request->month);
-            $query->whereMonth('month', $month->month)
-                  ->whereYear('month', $month->year);
-        }
-
-        if ($request->user_id) {
-            $query->where('user_id', $request->user_id);
-        }
-
-        $payrolls = $query->with('user')->orderBy('month', 'desc')->get();
-        $users = User::where('company_id', $companyId)->get();
-
-        return view('company.payrolls', compact('payrolls', 'users', 'company'));
+    // 月フィルター
+    if ($request->month) {
+        $query->where('date', 'like', $request->month . '%');
     }
+
+    // 社員フィルター
+    if ($request->user_id) {
+        $query->where('user_id', $request->user_id);
+    }
+
+    $attendances = $query->orderBy('date', 'desc')->get();
+
+    $hourlyWage = 1000; // 時給固定（必要に応じて変更可能）
+
+    $users = User::where('company_id', $companyId)->get();
+
+    return view('company.payrolls', compact('attendances', 'users', 'company', 'hourlyWage'));
+}
+
 
     // 👤 社員登録フォーム表示
     public function createEmployee($companyId)
@@ -215,6 +236,52 @@ class CompanyController extends Controller
         ->get();
 
     return view('company.partials.recent_logs', compact('recent_attendances'))->render();
+}
+public function editEmployee(Company $company, User $employee)
+{
+    $stores = Store::where('company_id', $company->id)->get();
+
+    return view('company.employees_edit', compact('company', 'employee', 'stores'));
+}
+
+public function updateEmployee(Request $request, Company $company, User $employee)
+{
+    $validated = $request->validate([
+        'name' => 'required|string|max:255',
+        'email' => 'required|email',
+        'phone' => 'nullable|string|max:20',
+        'store_id' => 'required|exists:stores,id',
+        'hire_date' => 'required|date',
+    ]);
+
+    $employee->update($validated);
+
+    return redirect()->route('company.employees', $company)
+        ->with('success', '社員情報を更新しました。');
+}
+
+
+public function payrollsPdf(Request $request, $companyId)
+{
+    $company = Company::findOrFail($companyId);
+
+    // 月指定（未指定なら今月）
+    $month = $request->month ?? now()->format('Y-m');
+
+    // Attendance から日別データ取得
+    $attendances = Attendance::with('user')
+        ->whereHas('user', fn($q) => $q->where('company_id', $companyId))
+        ->whereNotNull('clock_in')
+        ->whereNotNull('clock_out')
+        ->where('date', 'like', $month . '%')
+        ->orderBy('date', 'asc')
+        ->get();
+
+    $hourlyWage = 1000; // 時給固定（必要に応じて変更可能）
+
+    return Pdf::loadView('company.payrolls_pdf', compact('attendances', 'company', 'month', 'hourlyWage'))
+              ->setPaper('A4', 'landscape') // 横向きにする場合
+              ->download("給与一覧_{$month}.pdf");
 }
 
 }
