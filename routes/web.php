@@ -23,49 +23,48 @@ Route::middleware(['auth'])->group(function () {
     });
 });
 
-// 🔹 ホーム画面（任意）
+// 🔹 ホーム画面
 Route::get('/', function () {
     return redirect('/login');
-    
 });
-Route::get('/company/{company}/employees', [App\Http\Controllers\CompanyController::class, 'employees'])
-    ->name('company.employees');
-    
-Route::get('/company/{company}/attendances', [App\Http\Controllers\CompanyController::class, 'attendances'])
-    ->name('company.attendances');
 
-// 🔹給与
+// 🔹 社員一覧・勤怠一覧
+Route::get('/company/{company}/employees', [CompanyController::class, 'employees'])->name('company.employees');
+Route::get('/company/{company}/attendances', [CompanyController::class, 'attendances'])->name('company.attendances');
+
+// 🔹 給与関連
 Route::get('/payroll', [PayrollController::class, 'index'])->name('payroll.index');
 Route::post('/payroll/calculate', [PayrollController::class, 'calculatePayroll'])->name('payroll.calculate');
-
 
 Route::get('/company/{company}/dashboard', [CompanyController::class, 'dashboard'])->name('company.dashboard');
 Route::get('/company/{id}/employees', [CompanyController::class, 'employees'])->name('company.employees');
 Route::get('/company/{id}/attendances', [CompanyController::class, 'attendances'])->name('company.attendances');
 Route::get('/company/{id}/payrolls', [CompanyController::class, 'payrolls'])->name('company.payrolls');
-Route::get('/company/{id}/generate-payroll', [CompanyController::class, 'generatePayroll'])
-    ->name('company.generatePayroll');
+Route::get('/company/{id}/generate-payroll', [CompanyController::class, 'generatePayroll'])->name('company.generatePayroll');
 
-// 社員管理ルート
+// 🔹 社員管理ルート
 Route::middleware(['auth'])->group(function () {
-    Route::get('/company/{company}/employees', [App\Http\Controllers\CompanyController::class, 'employees'])
-        ->name('company.employees');
-    Route::get('/company/{company}/employees/create', [App\Http\Controllers\CompanyController::class, 'createEmployee'])
-        ->name('company.employees.create');
-    Route::post('/company/{company}/employees', [App\Http\Controllers\CompanyController::class, 'storeEmployee'])
-        ->name('company.employees.store');
+    Route::get('/company/{company}/employees', [CompanyController::class, 'employees'])->name('company.employees');
+    Route::get('/company/{company}/employees/create', [CompanyController::class, 'createEmployee'])->name('company.employees.create');
+    Route::post('/company/{company}/employees', [CompanyController::class, 'storeEmployee'])->name('company.employees.store');
 });
 
-Route::get('/company/{company}/users/create', [CompanyController::class, 'createUser'])
-    ->name('company.users.create');
-Route::post('/company/{company}/users', [CompanyController::class, 'storeUser'])
-    ->name('company.users.store');
+// 🔹 社員追加
+Route::get('/company/{company}/users/create', [CompanyController::class, 'createUser'])->name('company.users.create');
+Route::post('/company/{company}/users', [CompanyController::class, 'storeUser'])->name('company.users.store');
 
-Route::get('/company/{company}/recent-logs', [CompanyController::class, 'recentLogs'])
-    ->name('company.recentLogs');
+// 🔹 最近のログ
+Route::get('/company/{company}/recent-logs', [CompanyController::class, 'recentLogs'])->name('company.recentLogs');
 
-Route::delete('/companies/{company}/employees/{employee}', [App\Http\Controllers\CompanyController::class, 'deleteEmployee'])
-    ->name('company.employees.delete');
+// 🔹 社員削除（ソフトデリート＋status変更）
+Route::delete('/companies/{company}/employees/{employee}', [CompanyController::class, 'deleteEmployee'])->name('company.employees.delete');
 
-Route::delete('/companies/{company}/employees/{employee}', [CompanyController::class, 'deleteEmployee'])
-    ->name('company.employees.delete');
+// 🔹 社員編集
+Route::get('/company/{company}/employees/{employee}/edit', [CompanyController::class, 'editEmployee'])->name('company.employees.edit');
+Route::post('/company/{company}/employees/{employee}', [CompanyController::class, 'updateEmployee'])->name('company.employees.update');
+
+// 🔹 勤怠削除
+Route::delete('/company/{company}/attendances/{attendance}', [CompanyController::class, 'destroyAttendance'])->name('company.attendances.destroy');
+
+// 🔹 給与PDF出力
+Route::get('/company/{id}/payrolls/pdf', [CompanyController::class, 'payrollsPdf'])->name('company.payrollsPdf');

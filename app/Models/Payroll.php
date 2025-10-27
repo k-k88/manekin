@@ -24,4 +24,10 @@ class Payroll extends Model
     {
         return $this->belongsTo(User::class);
     }
+
+    public function attendance()
+{
+    return $this->belongsTo(Attendance::class);
+}
+
 }
