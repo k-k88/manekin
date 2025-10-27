@@ -33,6 +33,7 @@ class Company extends Model
     {
         return $this->hasManyThrough(Attendance::class, User::class);
     }
+    
 
     // ✅ 1つの企業は複数の給与データ（Payroll）を持つ
     public function payrolls()
