@@ -243,6 +243,14 @@ class CompanyController extends Controller
             'store_id' => 'required|exists:stores,id',
             'hire_date' => 'required|date',
         ]);
+    if (!empty($validated['phone'])) {
+        $digits = preg_replace('/\D/', '', $validated['phone']);
+        if (strlen($digits) === 10) {
+            $validated['phone'] = preg_replace('/(\d{2,3})(\d{3,4})(\d{4})/', '$1-$2-$3', $digits);
+    } elseif (strlen($digits) === 11) {
+        $validated['phone'] = preg_replace('/(\d{3})(\d{4})(\d{4})/', '$1-$2-$3', $digits);
+    }
+}
 
         $validated['company_id'] = $companyId;
         $validated['password'] = bcrypt($validated['password']);
@@ -289,12 +297,23 @@ public function updateEmployee(Request $request, Company $company, User $employe
         'hire_date' => 'required|date',
     ]);
 
+    // ✅ 電話番号を自動的にハイフン形式に整える
+    if (!empty($validated['phone'])) {
+        $digits = preg_replace('/\D/', '', $validated['phone']); // 数字だけ抽出
+        if (strlen($digits) === 10) {
+            // 固定電話 (03-XXXX-XXXXなど)
+            $validated['phone'] = preg_replace('/(\d{2,3})(\d{3,4})(\d{4})/', '$1-$2-$3', $digits);
+        } elseif (strlen($digits) === 11) {
+            // 携帯電話 (090-XXXX-XXXXなど)
+            $validated['phone'] = preg_replace('/(\d{3})(\d{4})(\d{4})/', '$1-$2-$3', $digits);
+        }
+    }
+
     $employee->update($validated);
 
     return redirect()->route('company.employees', $company)
         ->with('success', '社員情報を更新しました。');
 }
-
 
 public function payrollsPdf(Request $request, $companyId)
 {
