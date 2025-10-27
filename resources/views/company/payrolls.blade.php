@@ -44,11 +44,6 @@
         勤怠から給与を生成する
     </a>
 
-    {{-- PDF出力 --}}
-    <a href="{{ route('company.payrollsPdf', ['company' => $company->id, 'month' => request('month')]) }}"
-       class="btn btn-danger mb-3">
-        PDFでダウンロード
-    </a>
 
     {{-- CSV出力 --}}
     <a href="{{ route('company.payrollsCsv', ['company' => $company->id, 'month' => request('month')]) }}"
