@@ -150,8 +150,8 @@ class CompanyController extends Controller
             }
         });
 
-        return redirect()->route('company.payrolls', ['id' => $companyId])
-                         ->with('success', '給与データを生成しました。');
+        return redirect()->route('company.payrolls', ['company' => $companyId])
+                 ->with('success', '給与データを生成しました。');
     }
 
     // 💵 給与一覧（月・社員フィルター付き）
