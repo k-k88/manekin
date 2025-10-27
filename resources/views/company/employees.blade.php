@@ -31,6 +31,7 @@
                 <th>所属店舗</th>
                 <th>入社日</th>
                 <th>ステータス</th>
+                <th>操作</th> {{-- ← 追加 --}}
             </tr>
         </thead>
         <tbody>
@@ -58,10 +59,20 @@
                             <span class="badge bg-secondary">退職</span>
                         @endif
                     </td>
+                    <td>
+                        {{-- 削除ボタン --}}
+                        <form action="{{ route('company.employees.delete', ['company' => $company->id, 'employee' => $employee->id]) }}"
+                              method="POST"
+                              onsubmit="return confirm('本当に削除しますか？')">
+                            @csrf
+                            @method('DELETE')
+                            <button type="submit" class="btn btn-danger btn-sm">削除</button>
+                        </form>
+                    </td>
                 </tr>
             @empty
                 <tr>
-                    <td colspan="8" class="text-center text-muted">社員が登録されていません。</td>
+                    <td colspan="9" class="text-center text-muted">社員が登録されていません。</td>
                 </tr>
             @endforelse
         </tbody>

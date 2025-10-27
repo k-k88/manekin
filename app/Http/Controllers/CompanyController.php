@@ -217,4 +217,24 @@ class CompanyController extends Controller
     return view('company.partials.recent_logs', compact('recent_attendances'))->render();
 }
 
+ // 👤 社員削除処理
+public function deleteEmployee($companyId, $employeeId)
+{
+    $company = Company::findOrFail($companyId);
+    $employee = User::findOrFail($employeeId);
+
+    // 会社が一致しない場合はアクセス拒否
+    if ($employee->company_id !== $company->id) {
+        abort(403, 'アクセス権がありません');
+    }
+
+    // 削除実行
+    $employee->delete();
+
+    // ✅ 削除後は社員一覧にリダイレクト
+    return redirect()->route('company.employees', $company->id)
+                     ->with('success', '社員を削除しました。');
+}
+
+
 }

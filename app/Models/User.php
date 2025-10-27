@@ -5,11 +5,12 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Database\Eloquent\SoftDeletes; // ← 追加！
 use Illuminate\Http\Request; 
 
 class User extends Authenticatable
 {
-    use HasFactory, Notifiable;
+    use HasFactory, Notifiable, SoftDeletes; // ← ここに追加！
 
     protected $fillable = [
         'name',
@@ -56,32 +57,29 @@ class User extends Authenticatable
     }
 
     public function createUser(Company $company)
-{
-    // その会社の店舗一覧を取得
-    $stores = $company->stores()->get();
+    {
+        $stores = $company->stores()->get();
+        return view('company.users_create', compact('company', 'stores'));
+    }
 
-    return view('company.users_create', compact('company', 'stores'));
-}
+    public function storeUser(Request $request, Company $company)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'email' => 'required|email|unique:users,email',
+            'phone' => 'nullable|string|max:20',
+            'store_id' => 'required|exists:stores,id',
+            'hire_date' => 'required|date',
+            'password' => 'required|string|min:6',
+        ]);
 
-public function storeUser(Request $request, Company $company)
-{
-    $validated = $request->validate([
-        'name' => 'required|string|max:255',
-        'email' => 'required|email|unique:users,email',
-        'phone' => 'nullable|string|max:20',
-        'store_id' => 'required|exists:stores,id',
-        'hire_date' => 'required|date',
-        'password' => 'required|string|min:6',
-    ]);
+        $validated['password'] = bcrypt($validated['password']);
+        $validated['company_id'] = $company->id;
+        $validated['role'] = 'employee';
 
-    $validated['password'] = bcrypt($validated['password']);
-    $validated['company_id'] = $company->id;
-    $validated['role'] = 'employee';
+        User::create($validated);
 
-    User::create($validated);
-
-    return redirect()->route('company.users', $company->id)
-        ->with('success', '社員を登録しました。');
-}
-
+        return redirect()->route('company.users', $company->id)
+            ->with('success', '社員を登録しました。');
+    }
 }

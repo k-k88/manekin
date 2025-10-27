@@ -63,3 +63,9 @@ Route::post('/company/{company}/users', [CompanyController::class, 'storeUser'])
 
 Route::get('/company/{company}/recent-logs', [CompanyController::class, 'recentLogs'])
     ->name('company.recentLogs');
+
+Route::delete('/companies/{company}/employees/{employee}', [App\Http\Controllers\CompanyController::class, 'deleteEmployee'])
+    ->name('company.employees.delete');
+
+Route::delete('/companies/{company}/employees/{employee}', [CompanyController::class, 'deleteEmployee'])
+    ->name('company.employees.delete');
