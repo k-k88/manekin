@@ -101,8 +101,41 @@ class CompanyController extends Controller
         ->orderBy('date', 'desc')
         ->get();
 
+
         return view('company.attendances', compact('company', 'attendances', 'users'));
     }
+
+    // 編集フォーム表示
+    public function editAttendance($companyId, Attendance $attendance)
+    {
+        $company = Company::findOrFail($companyId);
+
+        return view('company.editAttendance', compact('company', 'attendance'));
+    }
+
+    // 更新処理
+   public function updateAttendance(Request $request, Company $company, Attendance $attendance)
+{
+    // アクセス制限
+    if ($attendance->user->company_id !== $company->id) {
+        abort(403, '他社の勤怠は更新できません');
+    }
+
+    $request->validate([
+        'clock_in' => 'required|date_format:H:i',
+        'clock_out' => 'required|date_format:H:i|after:clock_in',
+    ]);
+
+    $attendance->update([
+        'clock_in' => $request->clock_in,
+        'clock_out' => $request->clock_out,
+    ]);
+
+    return redirect()->route('company.attendances', ['company' => $company->id])
+                     ->with('success', '勤怠を更新しました。');
+}
+
+
 
     public function destroyAttendance(Company $company, Attendance $attendance)
 {
