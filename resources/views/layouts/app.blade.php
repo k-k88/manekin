@@ -10,7 +10,7 @@
 <body>
     <nav class="navbar navbar-expand-lg navbar-light bg-light mb-4">
         <div class="container">
-            <a class="navbar-brand" href="#">勤怠管理システム</a>
+            <a class="navbar-brand" href="{{ route('company.dashboard', $company->id) }}">勤怠管理システム</a>
         </div>
     </nav>
 
