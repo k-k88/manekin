@@ -1,4 +1,3 @@
-{{-- resources/views/company/employees.blade.php --}}
 @extends('layouts.app')
 
 @section('content')
@@ -31,6 +30,7 @@
                 <th>所属店舗</th>
                 <th>入社日</th>
                 <th>ステータス</th>
+                <th>時給</th> {{-- ✅ 追加 --}}
                 <th>操作</th>
             </tr>
         </thead>
@@ -59,15 +59,27 @@
                             <span class="badge bg-secondary">退職</span>
                         @endif
                     </td>
+
+                    {{-- ✅ 時給フォーム --}}
+                    <td>
+                        <form action="{{ route('company.employees.updateWage', ['company' => $company->id, 'employee' => $employee->id]) }}" 
+                              method="POST" class="d-flex align-items-center">
+                            @csrf
+                            @method('PUT')
+                            <input type="number" name="hourly_wage" 
+                                   value="{{ $employee->hourly_wage ?? '' }}" 
+                                   class="form-control form-control-sm me-2 text-end" 
+                                   style="width:90px;" placeholder="円">
+                            <button type="submit" class="btn btn-sm btn-outline-primary">更新</button>
+                        </form>
+                    </td>
+
                     <td class="d-flex gap-1">
-                        {{-- 編集ボタン --}}
                         <a href="{{ route('company.employees.edit', ['company' => $company->id, 'employee' => $employee->id]) }}" 
                            class="btn btn-sm btn-warning">編集</a>
 
-                        {{-- 削除ボタン --}}
                         <form action="{{ route('company.employees.delete', ['company' => $company->id, 'employee' => $employee->id]) }}"
-                              method="POST"
-                              onsubmit="return confirm('本当に削除しますか？')">
+                              method="POST" onsubmit="return confirm('本当に削除しますか？')">
                             @csrf
                             @method('DELETE')
                             <button type="submit" class="btn btn-sm btn-danger">削除</button>
@@ -76,7 +88,7 @@
                 </tr>
             @empty
                 <tr>
-                    <td colspan="9" class="text-center text-muted">社員が登録されていません。</td>
+                    <td colspan="10" class="text-center text-muted">社員が登録されていません。</td>
                 </tr>
             @endforelse
         </tbody>

@@ -60,12 +60,23 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/employees/{employee}/edit', [CompanyController::class, 'editEmployee'])->name('employees.edit');
         Route::post('/employees/{employee}', [CompanyController::class, 'updateEmployee'])->name('employees.update');
         Route::delete('/employees/{employee}', [CompanyController::class, 'deleteEmployee'])->name('employees.delete');
+        Route::put('/employees/{employee}/update-wage', [CompanyController::class, 'updateWage'])
+            ->name('employees.updateWage');
+
+
 
         // 給与
         Route::get('/payrolls', [CompanyController::class, 'payrolls'])->name('payrolls');
         Route::get('/generate-payroll', [CompanyController::class, 'generatePayroll'])->name('generatePayroll');
         Route::get('/payrolls/pdf', [CompanyController::class, 'payrollsPdf'])->name('payrollsPdf');
         Route::get('/payrolls/csv', [CompanyController::class, 'payrollsCsv'])->name('payrollsCsv');
+<<<<<<< HEAD
+=======
+        Route::get('/payrolls/recalculate', [CompanyController::class, 'recalculatePayroll'])
+            ->name('payrolls.recalculate');
+
+
+>>>>>>> 05a65223e40743e56e76f9a42ed3512ac2df55e5
     });
 
     /*
