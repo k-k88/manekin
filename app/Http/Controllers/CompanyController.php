@@ -88,6 +88,36 @@ class CompanyController extends Controller
         return view('company.attendances', compact('company', 'attendances', 'users'));
     }
 
+    // 編集フォーム表示
+    public function editAttendance($companyId, Attendance $attendance)
+    {
+        $company = Company::findOrFail($companyId);
+
+        return view('company.editAttendance', compact('company', 'attendance'));
+    }
+
+    // 勤怠更新
+    public function updateAttendance(Request $request, Company $company, Attendance $attendance)
+    {
+        if ($attendance->user->company_id !== $company->id) {
+            abort(403, '他社の勤怠は更新できません');
+        }
+
+        $request->validate([
+            'clock_in' => 'required|date_format:H:i',
+            'clock_out' => 'required|date_format:H:i|after:clock_in',
+        ]);
+
+        $attendance->update([
+            'clock_in' => $request->clock_in,
+            'clock_out' => $request->clock_out,
+        ]);
+
+        return redirect()->route('company.attendances', ['company' => $company->id])
+                         ->with('success', '勤怠を更新しました。');
+    }
+
+    // 勤怠削除
     public function destroyAttendance(Company $company, Attendance $attendance)
     {
         if ($attendance->user->company_id !== $company->id) {
@@ -131,7 +161,6 @@ class CompanyController extends Controller
             }
         });
 
-        // ✅ 修正ポイント: 'id' → 'company'
         return redirect()->route('company.payrolls', ['company' => $companyId])
                          ->with('success', '給与データを生成しました。');
     }
@@ -161,6 +190,7 @@ class CompanyController extends Controller
         return view('company.payrolls', compact('attendances', 'users', 'company', 'hourlyWage'));
     }
 
+    // 社員登録フォーム
     public function createEmployee($companyId)
     {
         $company = Company::findOrFail($companyId);
@@ -169,6 +199,7 @@ class CompanyController extends Controller
         return view('company.employees_create', compact('company', 'stores'));
     }
 
+    // 社員登録処理
     public function storeEmployee(Request $request, $companyId)
     {
         $company = Company::findOrFail($companyId);
@@ -193,6 +224,7 @@ class CompanyController extends Controller
                          ->with('success', '社員を登録しました。');
     }
 
+    // 最近の勤怠ログ
     public function recentLogs(Company $company, Request $request)
     {
         $date = $request->get('date', Carbon::today()->format('Y-m-d'));
@@ -207,12 +239,14 @@ class CompanyController extends Controller
         return view('company.partials.recent_logs', compact('recent_attendances'))->render();
     }
 
+    // 社員編集
     public function editEmployee(Company $company, User $employee)
     {
         $stores = Store::where('company_id', $company->id)->get();
         return view('company.employees_edit', compact('company', 'employee', 'stores'));
     }
 
+    // 社員更新
     public function updateEmployee(Request $request, Company $company, User $employee)
     {
         $validated = $request->validate([
@@ -229,26 +263,8 @@ class CompanyController extends Controller
                          ->with('success', '社員情報を更新しました。');
     }
 
-    public function payrollsPdf(Request $request, $companyId)
-    {
-        $company = Company::findOrFail($companyId);
-        $month = $request->month ?? now()->format('Y-m');
 
-        $attendances = Attendance::with('user')
-            ->whereHas('user', fn($q) => $q->where('company_id', $companyId))
-            ->whereNotNull('clock_in')
-            ->whereNotNull('clock_out')
-            ->where('date', 'like', $month . '%')
-            ->orderBy('date', 'asc')
-            ->get();
-
-        $hourlyWage = 1000;
-
-        return Pdf::loadView('company.payrolls_pdf', compact('attendances', 'company', 'month', 'hourlyWage'))
-                  ->setPaper('A4', 'landscape')
-                  ->download("給与一覧_{$month}.pdf");
-    }
-
+    // 社員削除
     public function deleteEmployee($companyId, $employeeId)
     {
         $company = Company::findOrFail($companyId);
@@ -264,12 +280,13 @@ class CompanyController extends Controller
                          ->with('success', '社員を削除しました。');
     }
 
+    // 給与CSV出力
     public function payrollsCsv(Company $company)
     {
         $month = request('month', now()->format('Y-m'));
         $attendances = $company->attendances()
-                               ->whereYear('date', \Carbon\Carbon::parse($month)->year)
-                               ->whereMonth('date', \Carbon\Carbon::parse($month)->month)
+                               ->whereYear('date', Carbon::parse($month)->year)
+                               ->whereMonth('date', Carbon::parse($month)->month)
                                ->get();
 
         $hourlyWage = 1200;
@@ -279,14 +296,13 @@ class CompanyController extends Controller
         foreach ($attendances as $attendance) {
             if (!$attendance->clock_in || !$attendance->clock_out) continue;
 
-            $hours = \Carbon\Carbon::parse($attendance->clock_in)
-                     ->diffInMinutes($attendance->clock_out) / 60;
+            $hours = Carbon::parse($attendance->clock_in)->diffInMinutes($attendance->clock_out) / 60;
             $pay = $hours * $hourlyWage;
 
             $csvData .= "{$attendance->user->name}," .
-                        \Carbon\Carbon::parse($attendance->date)->format('Y/m/d') . "," .
-                        \Carbon\Carbon::parse($attendance->clock_in)->format('H:i') . "," .
-                        \Carbon\Carbon::parse($attendance->clock_out)->format('H:i') . "," .
+                        Carbon::parse($attendance->date)->format('Y/m/d') . "," .
+                        Carbon::parse($attendance->clock_in)->format('H:i') . "," .
+                        Carbon::parse($attendance->clock_out)->format('H:i') . "," .
                         number_format($hours, 2) . "," .
                         $hourlyWage . "," .
                         $pay . "\n";

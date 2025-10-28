@@ -11,6 +11,13 @@
         </a>
     </div>
 
+    {{-- フラッシュメッセージ --}}
+    @if(session('success'))
+        <div class="alert alert-success">
+            {{ session('success') }}
+        </div>
+    @endif
+
     {{-- フィルター --}}
     <form method="GET" class="mb-3 d-flex gap-2 align-items-end flex-wrap">
         <div>
@@ -43,7 +50,6 @@
        class="btn btn-success mb-3">
         勤怠から給与を生成する
     </a>
-
 
     {{-- CSV出力 --}}
     <a href="{{ route('company.payrollsCsv', ['company' => $company->id, 'month' => request('month')]) }}"
