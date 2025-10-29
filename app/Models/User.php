@@ -18,6 +18,7 @@ class User extends Authenticatable
         'password',
         'line_user_id',
         'phone',
+        'hourly_wage',
         'role',
         'store_id',
         'company_id',
@@ -101,4 +102,5 @@ class User extends Authenticatable
             $user->status = 'active';
         });
     }
+
 }

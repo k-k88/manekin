@@ -76,6 +76,7 @@
         <tbody>
             @forelse ($attendances as $attendance)
                 @php
+                    $hourlyWage = $attendance->hourly_wage ?? 1000;
                     $hours = 0;
                     $minutes = 0;
                     $pay = 0;
@@ -91,8 +92,8 @@
                 <tr>
                     <td>{{ $attendance->user->name }}</td>
                     <td>{{ $attendance->date }}</td>
-                    <td>{{ $attendance->clock_in ?? '-' }}</td>
-                    <td>{{ $attendance->clock_out ?? '-' }}</td>
+                    <td>{{ $attendance->clock_in ? \Carbon\Carbon::parse($attendance->clock_in)->format('H:i') : '-' }}</td>
+                    <td>{{ $attendance->clock_out ? \Carbon\Carbon::parse($attendance->clock_out)->format('H:i') : '-' }}</td>
                     <td>
                         @if($attendance->clock_in && $attendance->clock_out)
                             {{ $hours }}時間{{ $minutes }}分
@@ -114,9 +115,10 @@
     {{-- 総給与 --}}
     @if($attendances->count())
         @php
-            $totalPay = $attendances->sum(function($a) use ($hourlyWage) {
+            $totalPay = $attendances->sum(function($a) {
                 if ($a->clock_in && $a->clock_out) {
                     $diff = \Carbon\Carbon::parse($a->clock_in)->diffInMinutes($a->clock_out);
+                    $hourlyWage = $a->hourly_wage ?? 1000;
                     return ($diff / 60) * $hourlyWage;
                 }
                 return 0;
