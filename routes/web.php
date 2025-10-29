@@ -5,23 +5,40 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\LineWebhookController;
 use App\Http\Controllers\PayrollController;
+use App\Http\Controllers\ShiftController;
 
-// LINE Webhook（CSRF除外）
+/*
+|--------------------------------------------------------------------------
+| Web Routes
+|--------------------------------------------------------------------------
+*/
+Route::get('/shift/login/{line_user_id}', [ShiftController::class, 'loginWithLine'])->name('shift.login');
+
+
+// 🔸 LINE Webhook（CSRF除外）
 Route::post('/line/webhook', [LineWebhookController::class, 'webhook']);
 
-// ログイン
+// 🔸 ログイン / ログアウト
 Route::get('/login', [AuthController::class, 'showLoginForm'])->name('login');
 Route::post('/login', [AuthController::class, 'login'])->name('login.post');
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
-// ホーム
+// 🔸 ホーム → ログインへリダイレクト
 Route::get('/', fn() => redirect('/login'));
 
-// 認証必須
+// 🔹 LINE経由のシフト登録用（ログイン不要）
+Route::get('/shift/login/{line_user_id}', [ShiftController::class, 'loginWithLine'])
+    ->name('shift.login');
+
+// ✅ 認証が必要なルート
 Route::middleware(['auth'])->group(function () {
 
-    // 企業関連
-    Route::prefix('company/{company}')->name('company.')->middleware('auth')->group(function() {
+    /*
+    |--------------------------------------------------------------------------
+    | 企業管理（会社ごと）
+    |--------------------------------------------------------------------------
+    */
+    Route::prefix('company/{company}')->name('company.')->group(function() {
 
         // ダッシュボード
         Route::get('/dashboard', [CompanyController::class, 'dashboard'])->name('dashboard');
@@ -31,11 +48,10 @@ Route::middleware(['auth'])->group(function () {
         Route::put('/attendances/{attendance}', [CompanyController::class, 'updateAttendance'])->name('attendances.update');
         Route::delete('/attendances/{attendance}', [CompanyController::class, 'destroyAttendance'])->name('attendances.destroy');
         Route::get('/recent-logs', [CompanyController::class, 'recentLogs'])->name('recentLogs');
-        // 勤怠追加フォーム
-        Route::get('/attendances/create', [CompanyController::class, 'createAttendance'])->name('attendances.create');
-        // 勤怠追加処理
-        Route::post('/attendances', [CompanyController::class, 'storeAttendance'])->name('attendances.store');
 
+        // 勤怠追加
+        Route::get('/attendances/create', [CompanyController::class, 'createAttendance'])->name('attendances.create');
+        Route::post('/attendances', [CompanyController::class, 'storeAttendance'])->name('attendances.store');
 
         // 社員管理
         Route::get('/employees', [CompanyController::class, 'employees'])->name('employees');
@@ -54,13 +70,33 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/generate-payroll', [CompanyController::class, 'generatePayroll'])->name('generatePayroll');
         Route::get('/payrolls/pdf', [CompanyController::class, 'payrollsPdf'])->name('payrollsPdf');
         Route::get('/payrolls/csv', [CompanyController::class, 'payrollsCsv'])->name('payrollsCsv');
+<<<<<<< HEAD
+=======
         Route::get('/payrolls/recalculate', [CompanyController::class, 'recalculatePayroll'])
             ->name('payrolls.recalculate');
 
 
+>>>>>>> 05a65223e40743e56e76f9a42ed3512ac2df55e5
     });
 
-    // 共通給与計算
+    /*
+    |--------------------------------------------------------------------------
+    | 共通給与計算
+    |--------------------------------------------------------------------------
+    */
     Route::get('/payroll', [PayrollController::class, 'index'])->name('payroll.index');
     Route::post('/payroll/calculate', [PayrollController::class, 'calculatePayroll'])->name('payroll.calculate');
+
+    /*
+    |--------------------------------------------------------------------------
+    | シフト登録・表示（ログイン後）
+    |--------------------------------------------------------------------------
+    */
+ Route::get('/shift/calendar/{user}', [ShiftController::class, 'calendar'])->name('shift.calendar');
+Route::get('/shift/events/{user}', [ShiftController::class, 'events'])->name('shift.events');
+Route::post('/shift/save', [ShiftController::class, 'save'])->name('shift.save');
+
+
+   
 });
+
