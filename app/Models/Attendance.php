@@ -31,29 +31,33 @@ class Attendance extends Model
         return $this->hasOne(Payroll::class);
     }
 
-    // ✅ 勤怠削除時に給与も削除
-     protected static function booted()
+   protected static function booted()
 {
     static::deleted(function ($attendance) {
+        // その勤怠に紐づく Payroll を削除
+        Payroll::where('attendance_id', $attendance->id)->delete();
+        
+        // 必要なら他の勤怠をまとめて再計算
         $month = Carbon::parse($attendance->date)->startOfMonth();
         $userId = $attendance->user_id;
 
-        $totalHours = DB::table('attendance')
-            ->where('user_id', $userId)
+        $attendances = self::where('user_id', $userId)
             ->whereMonth('date', $month->month)
             ->whereYear('date', $month->year)
             ->whereNotNull('clock_in')
             ->whereNotNull('clock_out')
-            ->get()
-            ->sum(function ($record) {
-                return Carbon::parse($record->clock_in)
-                    ->diffInHours(Carbon::parse($record->clock_out));
-            });
+            ->get();
 
-        $hourlyWage = 1000;
+        if ($attendances->isEmpty()) return;
+
+        $totalHours = $attendances->sum(function ($a) {
+            return Carbon::parse($a->clock_in)->diffInHours(Carbon::parse($a->clock_out));
+        });
+
+        $hourlyWage = 1000; // 実際は WageHistory を参照
         $totalPay = $totalHours * $hourlyWage;
 
-        \App\Models\Payroll::updateOrCreate(
+        Payroll::updateOrCreate(
             [
                 'user_id' => $userId,
                 'month' => $month->toDateString(),
@@ -62,11 +66,10 @@ class Attendance extends Model
                 'total_hours' => $totalHours,
                 'total_pay' => $totalPay,
                 'hourly_wage' => $hourlyWage,
-                'company_id' => $attendance->user->company_id, // 修正
+                'company_id' => $attendance->user->company_id,
             ]
         );
     });
 }
-
 
 }
