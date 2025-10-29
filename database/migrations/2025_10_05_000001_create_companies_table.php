@@ -12,6 +12,8 @@ return new class extends Migration {
             $table->string('name'); // 会社名
             $table->string('code')->unique(); // 管理コード（URLなどで使える）
             $table->timestamps();
+            $table->decimal('default_hourly_wage', 8, 2)->nullable(); // 会社デフォルト時給
+
         });
     }
 

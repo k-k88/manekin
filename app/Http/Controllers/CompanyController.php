@@ -137,39 +137,62 @@ class CompanyController extends Controller
             ->with('success', '勤怠データを削除しました。');
     }
 
-    // 💰 勤怠から給与生成
-    public function generatePayroll($companyId)
-    {
-        $users = User::where('company_id', $companyId)->get();
+    // 💰 勤怠から給与生成（過去データを上書きしない版）
+public function generatePayroll(Company $company)
+{
+    $users = User::where('company_id', $company->id)->get();
+    $month = Carbon::now()->format('Y-m-01');
 
-        DB::transaction(function () use ($users) {
-            foreach ($users as $user) {
-                $attendances = Attendance::where('user_id', $user->id)->get();
-                foreach ($attendances as $attendance) {
-                    if (!$attendance->clock_in || !$attendance->clock_out) continue;
+    foreach ($users as $user) {
+        $attendances = Attendance::where('user_id', $user->id)
+            ->whereMonth('date', Carbon::now()->month)
+            ->whereYear('date', Carbon::now()->year)
+            ->get();
 
-                    $hours = (strtotime($attendance->clock_out) - strtotime($attendance->clock_in)) / 3600;
-                    $hourlyWage = 1000;
-                    $totalPay = $hours * $hourlyWage;
+        $totalHours = 0;
+        $totalPay = 0;
 
-                    Payroll::updateOrCreate(
-                        [
-                            'user_id' => $user->id,
-                            'month' => date('Y-m-01', strtotime($attendance->date))
-                        ],
-                        [
-                            'hourly_wage' => $hourlyWage,
-                            'total_hours' => $hours,
-                            'total_pay' => $totalPay,
-                        ]
-                    );
+        foreach ($attendances as $attendance) {
+            if ($attendance->clock_in && $attendance->clock_out) {
+                $start = Carbon::parse($attendance->clock_in);
+                $end = Carbon::parse($attendance->clock_out);
+                $hours = $end->diffInMinutes($start) / 60;
+
+                // ✅ 勤務日の時給を履歴から取得
+                $effectiveWage = WageHistory::where('user_id', $user->id)
+                    ->where('effective_from', '<=', $attendance->date)
+                    ->orderByDesc('effective_from')
+                    ->value('hourly_wage');
+
+                // 履歴がなければ最新の時給を使用
+                if (!$effectiveWage) {
+                    $effectiveWage = $user->hourly_wage;
                 }
-            }
-        });
 
-        return redirect()->route('company.payrolls', ['company' => $companyId])
-            ->with('success', '給与データを生成しました。');
+                $totalHours += $hours;
+                $totalPay += $hours * $effectiveWage;
+            }
+        }
+
+        Payroll::updateOrCreate(
+            [
+                'user_id' => $user->id,
+                'month' => $month,
+            ],
+            [
+                'company_id' => $company->id,
+                'hourly_wage' => $user->hourly_wage, // 今月の基準時給を保存
+                'total_hours' => round($totalHours, 2),
+                'total_pay' => round($totalPay, 2),
+            ]
+        );
     }
+
+    return back()->with('success', '給与データを更新しました（過去分は保持されます）。');
+}
+
+
+
 
     // 💵 給与一覧
     public function payrolls(Request $request, $companyId)
