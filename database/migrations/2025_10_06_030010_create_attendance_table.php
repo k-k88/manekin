@@ -15,6 +15,8 @@ return new class extends Migration {
             $table->time('clock_in')->nullable();
             $table->time('clock_out')->nullable();
             $table->timestamps();
+            $table->decimal('hourly_wage', 8, 2)->nullable();
+
 
             $table->foreign('user_id')->references('id')->on('users')->onDelete('cascade');
         });

@@ -23,6 +23,9 @@ class CreateUsersTable extends Migration
             $table->string('password')->nullable();
             $table->rememberToken();
             $table->timestamps();
+            $table->decimal('hourly_wage', 8, 2)->nullable(); // 個別時給
+            $table->timestamp('wage_updated_at')->nullable(); // 時給更新日
+
 
             // 外部キー
             $table->foreign('company_id')

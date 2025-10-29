@@ -9,16 +9,18 @@ return new class extends Migration
     public function up()
     {
         Schema::table('users', function (Blueprint $table) {
-            // 'after' を削除して順序を気にしない
-            $table->timestamp('wage_updated_at')->nullable();
+            if (!Schema::hasColumn('users', 'wage_updated_at')) {
+                $table->timestamp('wage_updated_at')->nullable()->after('hourly_wage');
+            }
         });
     }
 
     public function down()
     {
         Schema::table('users', function (Blueprint $table) {
-            $table->dropColumn('wage_updated_at');
+            if (Schema::hasColumn('users', 'wage_updated_at')) {
+                $table->dropColumn('wage_updated_at');
+            }
         });
     }
 };
-
