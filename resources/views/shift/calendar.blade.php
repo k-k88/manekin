@@ -2,42 +2,61 @@
 
 @section('content')
 <div class="container">
-    <h3 class="mb-3">シフト登録 - {{ $user->name }}</h3>
+    <h3 class="mb-3 text-center">📅 {{ $user->name }} さんのシフト登録</h3>
 
-    @php
-        $year = now()->year;
-        $month = now()->month;
-        $firstDay = \Carbon\Carbon::create($year, $month, 1);
-        $lastDay = $firstDay->copy()->endOfMonth();
-        $startDayOfWeek = $firstDay->dayOfWeek;
-        $day = 1 - $startDayOfWeek;
-    @endphp
+    <div class="d-flex justify-content-between mb-2">
+        <a href="{{ route('shift.calendar', ['user'=>$user->id, 'year'=>$year, 'month'=>$month-1]) }}" class="btn btn-outline-secondary">← 前月</a>
+        <h4>{{ $year }}年 {{ $month }}月</h4>
+        <a href="{{ route('shift.calendar', ['user'=>$user->id, 'year'=>$year, 'month'=>$month+1]) }}" class="btn btn-outline-secondary">次月 →</a>
+    </div>
 
     <table class="table table-bordered text-center">
         <thead>
             <tr>
-                @foreach(['日','月','火','水','木','金','土'] as $dayName)
-                    <th>{{ $dayName }}</th>
+                @foreach(['日','月','火','水','木','金','土'] as $d)
+                    <th>{{ $d }}</th>
                 @endforeach
             </tr>
         </thead>
         <tbody>
-            @while($day <= $lastDay->day)
-                <tr>
-                    @for($i=0; $i<7; $i++)
-                        @if($day < 1 || $day > $lastDay->day)
-                            <td></td>
-                        @else
-                            <td class="shift-day" data-date="{{ $year }}-{{ sprintf('%02d',$month) }}-{{ sprintf('%02d',$day) }}">
-                                {{ $day }}
-                            </td>
-                        @endif
-                        @php $day++; @endphp
-                    @endfor
-                </tr>
-            @endwhile
+        @php $day = 1 - $firstDay->dayOfWeek; @endphp
+        @while($day <= $lastDay->day)
+            <tr>
+                @for($i=0; $i<7; $i++)
+                    @php $dateStr = sprintf('%04d-%02d-%02d', $year, $month, $day); @endphp
+
+                    @if($day < 1 || $day > $lastDay->day)
+                        <td></td>
+                    @else
+                        @php $shift = $shifts[$dateStr] ?? null; @endphp
+
+                        <td class="shift-day p-2 text-center"
+                            data-date="{{ $dateStr }}"
+                            @if($shift && $shift->is_day_off) style="background:#dc3545;color:white;font-weight:bold;" @endif>
+
+                            <strong>{{ $day }}</strong>
+
+                            @if($shift)
+                                @if($shift->is_day_off)
+                                    <div style="font-size:18px; font-weight:bold;">× 休</div>
+                                @else
+                                    <div class="small text-success fw-semibold">
+                                        {{ $shift->start_time ? \Carbon\Carbon::parse($shift->start_time)->format('H:i') : '' }} 〜
+                                        {{ $shift->end_time ? \Carbon\Carbon::parse($shift->end_time)->format('H:i') : '' }}
+                                    </div>
+                                @endif
+                            @endif
+
+                        </td>
+                    @endif
+                    @php $day++; @endphp
+                @endfor
+            </tr>
+        @endwhile
         </tbody>
     </table>
+
+    <button id="saveAllBtn" class="btn btn-primary w-100 my-3">💾 この月のシフトをまとめて保存</button>
 </div>
 
 <!-- モーダル -->
@@ -45,58 +64,127 @@
     <div class="modal-dialog">
         <form id="shiftForm" method="POST" action="{{ route('shift.save') }}" class="modal-content">
             @csrf
-            <input type="hidden" name="user_id" value="{{ $user->id }}">
             <input type="hidden" name="shift_date" id="shift_date">
+
             <div class="modal-header">
-                <h5 class="modal-title">シフト登録</h5>
+                <h5 class="modal-title" id="shiftModalTitle"></h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
+
             <div class="modal-body">
-                <div class="mb-3">
-                    <label class="form-label">開始時間</label>
-                    <input type="time" class="form-control" name="start_time" id="start_time">
+                <div class="form-check form-switch mb-3">
+                    <input type="checkbox" id="is_day_off" name="is_day_off" class="form-check-input">
+                    <label class="form-check-label">希望休にする</label>
                 </div>
-                <div class="mb-3">
-                    <label class="form-label">終了時間</label>
-                    <input type="time" class="form-control" name="end_time" id="end_time">
+
+                <div id="timeInputs">
+                    <label>開始時間（例: 09:00 / 25:00）</label>
+                    <input type="text" class="form-control mb-2" id="start_time" name="start_time">
+
+                    <label>終了時間（例: 17:00 / 27:30）</label>
+                    <input type="text" class="form-control" id="end_time" name="end_time">
                 </div>
             </div>
+
             <div class="modal-footer">
-                <button type="submit" class="btn btn-success">保存</button>
+                <button class="btn btn-success">保存</button>
             </div>
         </form>
     </div>
 </div>
 
+
+
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    document.querySelectorAll('.shift-day').forEach(td => {
-        td.addEventListener('click', function() {
-            document.getElementById('shift_date').value = this.dataset.date;
+
+    const shiftData = {}; // ← 月の下書き全保存用キャッシュ
+
+    const stored = @json($shifts);
+
+    document.querySelectorAll('.shift-day').forEach(cell => {
+        cell.addEventListener('click', function() {
+            const date = this.dataset.date;
+            document.getElementById('shiftModalTitle').innerText = `シフト登録: ${date}`;
+            document.getElementById('shift_date').value = date;
+
+            document.getElementById('is_day_off').checked = false;
             document.getElementById('start_time').value = '';
             document.getElementById('end_time').value = '';
+            document.getElementById('timeInputs').style.opacity = 1;
+
+            if (stored[date]) {
+                const s = stored[date];
+                if (s.is_day_off) {
+                    document.getElementById('is_day_off').checked = true;
+                    document.getElementById('timeInputs').style.opacity = 0.3;
+                } else {
+                    const fm = t => t ? t.substr(11,5) : '';
+                    document.getElementById('start_time').value = fm(s.start_time);
+                    document.getElementById('end_time').value = fm(s.end_time);
+                }
+            }
+
             new bootstrap.Modal(document.getElementById('shiftModal')).show();
         });
     });
 
+    document.getElementById('is_day_off').addEventListener('change', function() {
+        document.getElementById('timeInputs').style.opacity = this.checked ? 0.3 : 1;
+    });
+
+
     document.getElementById('shiftForm').addEventListener('submit', function(e) {
         e.preventDefault();
-        const formData = new FormData(this);
-        fetch(this.action, {
+
+        const date = document.getElementById('shift_date').value;
+        const cell = document.querySelector(`td.shift-day[data-date="${date}"]`);
+
+        const isDayOff = document.getElementById('is_day_off').checked;
+        const start = document.getElementById('start_time').value;
+        const end = document.getElementById('end_time').value;
+
+        shiftData[date] = {
+            is_day_off: isDayOff ? 1 : 0,
+            start_time: start,
+            end_time: end
+        };
+
+        cell.innerHTML = `<strong>${date.split('-')[2]}</strong>`;
+        if (isDayOff) {
+            cell.style.background = "#dc3545";
+            cell.style.color = "white";
+            cell.innerHTML += `<div style="font-size:18px; font-weight:bold;">× 休</div>`;
+        } else {
+            cell.style.background = "";
+            cell.style.color = "";
+            cell.innerHTML += `<div class="text-success small">${start} 〜 ${end}</div>`;
+        }
+
+        bootstrap.Modal.getInstance(document.getElementById('shiftModal')).hide();
+    });
+
+
+    document.getElementById('saveAllBtn').addEventListener('click', function() {
+        fetch("{{ route('shift.saveAll') }}", {
             method: 'POST',
-            headers: {'X-CSRF-TOKEN': '{{ csrf_token() }}'},
-            body: formData
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': '{{ csrf_token() }}'
+            },
+            body: JSON.stringify({ shifts: shiftData })
         })
-        .then(res => res.json())
-        .then(data => {
-            if(data.success){
-                alert('保存しました');
-                bootstrap.Modal.getInstance(document.getElementById('shiftModal')).hide();
+        .then(r => r.json())
+        .then(r => {
+            if (r.success) {
+                alert("✅ シフトをまとめて保存しました");
+                location.reload();
             } else {
-                alert('保存に失敗しました');
+                alert("⚠️ 保存に失敗しました");
             }
         });
     });
+
 });
 </script>
 @endsection

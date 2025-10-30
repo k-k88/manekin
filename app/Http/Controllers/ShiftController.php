@@ -5,36 +5,119 @@ namespace App\Http\Controllers;
 use App\Models\Shift;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Carbon\Carbon;
 
 class ShiftController extends Controller
 {
-    // LINEログイン用
+    // ✅ LINEから自動ログイン
     public function loginWithLine($line_user_id)
     {
         $user = User::where('line_user_id', $line_user_id)->first();
-        if (!$user) {
-            return redirect('/')->with('error', 'ユーザーが見つかりません');
-        }
-
-        auth()->login($user);
-
+        if (!$user) return redirect('/')->with('error', 'ユーザーが見つかりません');
+        Auth::login($user);
         return redirect()->route('shift.calendar', ['user' => $user->id]);
     }
 
-    // カレンダー表示
-    public function calendar(User $user)
+    // ✅ カレンダー表示
+    public function calendar(User $user, Request $request)
     {
-        return view('shift.calendar', compact('user'));
+        $year = $request->input('year', now()->year);
+        $month = $request->input('month', now()->month);
+
+        $firstDay = Carbon::create($year, $month, 1);
+        $lastDay = $firstDay->copy()->endOfMonth();
+
+        $shifts = Shift::where('user_id', $user->id)
+            ->whereBetween('shift_date', [$firstDay, $lastDay])
+            ->get()
+            ->keyBy('shift_date');
+
+        return view('shift.calendar', compact('user', 'year', 'month', 'firstDay', 'lastDay', 'shifts'));
     }
 
-    // シフト保存
-    public function save(Request $request)
-    {
+ public function save(Request $request)
+{
+    try {
+        $request->validate([
+            'shift_date' => 'required|date',
+        ]);
+
+        $date = $request->shift_date;
+        $isDayOff = $request->boolean('is_day_off');
+
+        // 深夜対応（26:30 → 翌日 02:30）
+        $normalize = function ($date, $time) {
+            if (!$time) return null;
+            [$h, $m] = explode(':', $time);
+            if ($h >= 24) {
+                $date = date('Y-m-d', strtotime($date . ' +1 day'));
+                $h -= 24;
+            }
+            return $date . ' ' . sprintf('%02d:%02d:00', $h, $m);
+        };
+
         Shift::updateOrCreate(
-            ['user_id' => $request->user_id, 'shift_date' => $request->shift_date],
-            ['start_time' => $request->start_time, 'end_time' => $request->end_time]
+            [
+                'user_id' => Auth::id(),
+                'shift_date' => $date,
+            ],
+            [
+                'start_time' => $isDayOff ? null : $normalize($date, $request->start_time),
+                'end_time' => $isDayOff ? null : $normalize($date, $request->end_time),
+                'is_day_off' => $isDayOff,
+                'store_id' => Auth::user()->store_id ?? null,
+            ]
         );
 
         return response()->json(['success' => true]);
+
+    } catch (\Throwable $e) {
+        \Log::error('Shift Save Error: ' . $e->getMessage());
+        return response()->json(['success' => false, 'error' => $e->getMessage()]);
     }
+}
+
+
+    // ✅ 月まとめて保存
+    public function saveAll(Request $request)
+{
+    try {
+        foreach ($request->shifts as $date => $shift) {
+
+            // 深夜時間 → 正規化
+            $normalize = function ($date, $time) {
+                if (!$time) return null;
+                [$hour, $minute] = explode(':', $time);
+                if ($hour >= 24) {
+                    $date = date('Y-m-d', strtotime($date . ' +1 day'));
+                    $hour -= 24;
+                }
+                return $date . ' ' . sprintf('%02d:%02d:00', $hour, $minute);
+            };
+
+            $start = $normalize($date, $shift['start_time'] ?? null);
+            $end   = $normalize($date, $shift['end_time'] ?? null);
+
+            Shift::updateOrCreate(
+                [
+                    'user_id' => auth()->id(),
+                    'shift_date' => $date,
+                ],
+                [
+                    'start_time' => ($shift['is_day_off'] ?? false) ? null : $start,
+                    'end_time'   => ($shift['is_day_off'] ?? false) ? null : $end,
+                    'is_day_off' => $shift['is_day_off'] ?? 0,
+                    'store_id'   => auth()->user()->store_id,
+                ]
+            );
+        }
+
+        return response()->json(['success' => true]);
+
+    } catch (\Throwable $e) {
+        \Log::error("Shift SaveAll Error: ".$e->getMessage());
+        return response()->json(['success' => false]);
+    }
+}
 }

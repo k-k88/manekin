@@ -91,7 +91,13 @@ Route::middleware(['auth'])->group(function () {
     */
  Route::get('/shift/calendar/{user}', [ShiftController::class, 'calendar'])->name('shift.calendar');
 Route::get('/shift/events/{user}', [ShiftController::class, 'events'])->name('shift.events');
+// ✅ シフト登録保存（LINEログイン用）
 Route::post('/shift/save', [ShiftController::class, 'save'])->name('shift.save');
+// まとめて保存
+// シフトまとめ保存
+Route::post('/shift/save-all', [ShiftController::class, 'saveAll'])->name('shift.saveAll');
+
+
 
 
    

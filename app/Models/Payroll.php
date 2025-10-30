@@ -17,6 +17,8 @@ class Payroll extends Model
         'company_id',
         'attendance_id',
         'hourly_wage',
+        'attendance_id' ,
+        'company_id',
         'total_hours',
         'total_pay',
         'month',
