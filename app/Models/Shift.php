@@ -15,6 +15,7 @@ class Shift extends Model
         'shift_date',
         'start_time',
         'end_time',
+        'is_day_off', // ← これが必要！
     ];
 
     // 🔗 リレーション

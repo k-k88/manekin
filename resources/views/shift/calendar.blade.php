@@ -35,17 +35,19 @@
                             @if($shift && $shift->is_day_off) style="background:#dc3545;color:white;font-weight:bold;" @endif>
 
                             <strong>{{ $day }}</strong>
-
-                            @if($shift)
-                                @if($shift->is_day_off)
-                                    <div style="font-size:18px; font-weight:bold;">× 休</div>
-                                @else
-                                    <div class="small text-success fw-semibold">
-                                        {{ $shift->start_time ? \Carbon\Carbon::parse($shift->start_time)->format('H:i') : '' }} 〜
-                                        {{ $shift->end_time ? \Carbon\Carbon::parse($shift->end_time)->format('H:i') : '' }}
-                                    </div>
-                                @endif
-                            @endif
+                    @if($shift)
+                        @if($shift->is_day_off)
+                            <div class="fw-bold text-center" style="font-size: 15px; padding-top:4px;">
+                                <span style="font-size:20px;">❌</span> 希望休
+                            </div>
+                        @else
+                            <div class="text-success small fw-semibold">
+                                {{ $shift->start_time ? \Carbon\Carbon::parse($shift->start_time)->format('H:i') : '' }}
+                                〜
+                                {{ $shift->end_time ? \Carbon\Carbon::parse($shift->end_time)->format('H:i') : '' }}
+                            </div>
+                        @endif
+                    @endif
 
                         </td>
                     @endif

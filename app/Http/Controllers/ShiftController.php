@@ -44,7 +44,7 @@ class ShiftController extends Controller
         ]);
 
         $date = $request->shift_date;
-        $isDayOff = $request->boolean('is_day_off');
+        $isDayOff = $request->has('is_day_off'); // ← ここ重要！
 
         // 深夜対応（26:30 → 翌日 02:30）
         $normalize = function ($date, $time) {
@@ -65,7 +65,7 @@ class ShiftController extends Controller
             [
                 'start_time' => $isDayOff ? null : $normalize($date, $request->start_time),
                 'end_time' => $isDayOff ? null : $normalize($date, $request->end_time),
-                'is_day_off' => $isDayOff,
+                'is_day_off' => $isDayOff ? 1 : 0,
                 'store_id' => Auth::user()->store_id ?? null,
             ]
         );
@@ -79,25 +79,24 @@ class ShiftController extends Controller
 }
 
 
+
     // ✅ 月まとめて保存
-    public function saveAll(Request $request)
+public function saveAll(Request $request)
 {
     try {
+        $normalize = function ($date, $time) {
+            if (!$time) return null;
+            [$h, $m] = explode(':', $time);
+            if ($h >= 24) {
+                $date = date('Y-m-d', strtotime($date . ' +1 day'));
+                $h -= 24;
+            }
+            return $date . ' ' . sprintf('%02d:%02d:00', $h, $m);
+        };
+
         foreach ($request->shifts as $date => $shift) {
 
-            // 深夜時間 → 正規化
-            $normalize = function ($date, $time) {
-                if (!$time) return null;
-                [$hour, $minute] = explode(':', $time);
-                if ($hour >= 24) {
-                    $date = date('Y-m-d', strtotime($date . ' +1 day'));
-                    $hour -= 24;
-                }
-                return $date . ' ' . sprintf('%02d:%02d:00', $hour, $minute);
-            };
-
-            $start = $normalize($date, $shift['start_time'] ?? null);
-            $end   = $normalize($date, $shift['end_time'] ?? null);
+            $isDayOff = isset($shift['is_day_off']) && $shift['is_day_off'] == 1;
 
             Shift::updateOrCreate(
                 [
@@ -105,10 +104,10 @@ class ShiftController extends Controller
                     'shift_date' => $date,
                 ],
                 [
-                    'start_time' => ($shift['is_day_off'] ?? false) ? null : $start,
-                    'end_time'   => ($shift['is_day_off'] ?? false) ? null : $end,
-                    'is_day_off' => $shift['is_day_off'] ?? 0,
-                    'store_id'   => auth()->user()->store_id,
+                    'is_day_off' => $isDayOff ? 1 : 0,
+                    'start_time' => $isDayOff ? null : $normalize($date, $shift['start_time'] ?? null),
+                    'end_time' => $isDayOff ? null : $normalize($date, $shift['end_time'] ?? null),
+                    'store_id' => auth()->user()->store_id,
                 ]
             );
         }
@@ -116,8 +115,9 @@ class ShiftController extends Controller
         return response()->json(['success' => true]);
 
     } catch (\Throwable $e) {
-        \Log::error("Shift SaveAll Error: ".$e->getMessage());
+        \Log::error('Shift SaveAll Error: ' . $e->getMessage());
         return response()->json(['success' => false]);
     }
 }
+
 }
