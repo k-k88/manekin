@@ -70,13 +70,10 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/generate-payroll', [CompanyController::class, 'generatePayroll'])->name('generatePayroll');
         Route::get('/payrolls/pdf', [CompanyController::class, 'payrollsPdf'])->name('payrollsPdf');
         Route::get('/payrolls/csv', [CompanyController::class, 'payrollsCsv'])->name('payrollsCsv');
-<<<<<<< HEAD
-=======
         Route::get('/payrolls/recalculate', [CompanyController::class, 'recalculatePayroll'])
             ->name('payrolls.recalculate');
 
 
->>>>>>> 05a65223e40743e56e76f9a42ed3512ac2df55e5
     });
 
     /*

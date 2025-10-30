@@ -10,20 +10,18 @@ return new class extends Migration {
         Schema::create('payroll', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('user_id');
+            $table->unsignedBigInteger('company_id'); // ✅ 追加
+            $table->unsignedBigInteger('attendance_id'); // ✅ 明示追加
             $table->decimal('hourly_wage', 8, 2);
             $table->decimal('total_hours', 8, 2);
             $table->decimal('total_pay', 10, 2);
             $table->date('month');
-            
             $table->timestamps();
 
+            // 🔗 外部キー定義（順番OK）
             $table->foreign('user_id')->references('id')->on('users')->onDelete('cascade');
             $table->foreign('company_id')->references('id')->on('companies')->onDelete('cascade');
-
-            $table->foreignId('attendance_id')
-                  ->constrained('attendances')
-                  ->onDelete('cascade');
-
+            $table->foreign('attendance_id')->references('id')->on('attendance')->onDelete('cascade'); // ✅ 修正
         });
     }
 
