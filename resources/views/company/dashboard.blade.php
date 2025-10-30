@@ -57,7 +57,37 @@
         <a href="{{ route('company.employees', $company->id) }}" class="btn btn-primary m-2">👥 社員一覧</a>
         <a href="{{ route('company.attendances', $company->id) }}" class="btn btn-success m-2">🕓 勤怠一覧</a>
         <a href="{{ route('company.payrolls', $company->id) }}" class="btn btn-warning m-2">💰 給与一覧</a>
+           <!-- 🗓️ シフト調整ボタン（モーダルを開く） -->
+    <button type="button" class="btn btn-info m-2" data-bs-toggle="modal" data-bs-target="#shiftModal">
+        🗓️ シフト調整
+    </button>
     </div>
+</div>
+
+<!-- 🗓️ シフト調整モーダル -->
+<div class="modal fade" id="shiftModal" tabindex="-1" aria-labelledby="shiftModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content shadow-lg">
+      <div class="modal-header">
+        <h5 class="modal-title" id="shiftModalLabel">シフト調整メニュー</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="閉じる"></button>
+      </div>
+      <div class="modal-body text-center">
+        <p>以下の操作を選択してください。</p>
+
+        <a href="{{ route('company.shifts.edit', $company->id) }}" class="btn btn-primary m-2">
+            ✏️ シフト編集
+        </a>
+
+        <a href="{{ route('company.shifts.delete', $company->id) }}" class="btn btn-danger m-2">
+            ❌ シフト削除
+        </a>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">閉じる</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
