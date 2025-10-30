@@ -48,12 +48,6 @@
         </div>
     </form>
 
-    {{-- 勤怠から給与生成ボタン --}}
-    <a href="{{ route('company.generatePayroll', ['company' => $company->id]) }}"
-       class="btn btn-success mb-3">
-        勤怠から給与を生成する
-    </a>
-
     {{-- CSV出力 --}}
     <a href="{{ route('company.payrollsCsv', ['company' => $company->id, 'month' => request('month')]) }}"
        class="btn btn-info mb-3">
@@ -75,34 +69,20 @@
         </thead>
         <tbody>
             @forelse ($attendances as $attendance)
-                @php
-                    $hourlyWage = $attendance->hourly_wage ?? 1000;
-                    $hours = 0;
-                    $minutes = 0;
-                    $pay = 0;
-
-                    if ($attendance->clock_in && $attendance->clock_out) {
-                        $diffInMinutes = \Carbon\Carbon::parse($attendance->clock_in)
-                            ->diffInMinutes($attendance->clock_out);
-                        $hours = floor($diffInMinutes / 60);
-                        $minutes = $diffInMinutes % 60;
-                        $pay = ($diffInMinutes / 60) * $hourlyWage;
-                    }
-                @endphp
                 <tr>
                     <td>{{ $attendance->user->name }}</td>
                     <td>{{ $attendance->date }}</td>
                     <td>{{ $attendance->clock_in ? \Carbon\Carbon::parse($attendance->clock_in)->format('H:i') : '-' }}</td>
                     <td>{{ $attendance->clock_out ? \Carbon\Carbon::parse($attendance->clock_out)->format('H:i') : '-' }}</td>
                     <td>
-                        @if($attendance->clock_in && $attendance->clock_out)
-                            {{ $hours }}時間{{ $minutes }}分
+                        @if(isset($attendance->hours))
+                            {{ floor($attendance->hours) }}時間{{ round(fmod($attendance->hours, 1) * 60) }}分
                         @else
                             -
                         @endif
                     </td>
-                    <td>{{ number_format($hourlyWage) }} 円</td>
-                    <td>{{ number_format($pay) }} 円</td>
+                    <td>{{ number_format($attendance->hourly_wage ?? 0) }} 円</td>
+                    <td>{{ number_format($attendance->pay ?? 0) }} 円</td>
                 </tr>
             @empty
                 <tr>
@@ -115,14 +95,7 @@
     {{-- 総給与 --}}
     @if($attendances->count())
         @php
-            $totalPay = $attendances->sum(function($a) {
-                if ($a->clock_in && $a->clock_out) {
-                    $diff = \Carbon\Carbon::parse($a->clock_in)->diffInMinutes($a->clock_out);
-                    $hourlyWage = $a->hourly_wage ?? 1000;
-                    return ($diff / 60) * $hourlyWage;
-                }
-                return 0;
-            });
+            $totalPay = $attendances->sum('pay');
         @endphp
         <div class="mt-3 text-end fw-bold">
             総給与: {{ number_format($totalPay) }} 円

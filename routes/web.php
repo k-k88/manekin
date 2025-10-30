@@ -67,7 +67,6 @@ Route::middleware(['auth'])->group(function () {
 
         // 給与
         Route::get('/payrolls', [CompanyController::class, 'payrolls'])->name('payrolls');
-        Route::get('/generate-payroll', [CompanyController::class, 'generatePayroll'])->name('generatePayroll');
         Route::get('/payrolls/pdf', [CompanyController::class, 'payrollsPdf'])->name('payrollsPdf');
         Route::get('/payrolls/csv', [CompanyController::class, 'payrollsCsv'])->name('payrollsCsv');
         Route::get('/payrolls/recalculate', [CompanyController::class, 'recalculatePayroll'])
