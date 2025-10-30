@@ -97,32 +97,44 @@ class CompanyController extends Controller
 
     // 更新処理
     public function updateAttendance(Request $request, Company $company, Attendance $attendance)
-    {
-        if ($attendance->user->company_id !== $company->id) {
-            abort(403, '他社の勤怠は更新できません');
-        }
-
-        $request->validate([
-            'clock_in' => 'required|date_format:H:i',
-            'clock_out' => 'required|date_format:H:i|after:clock_in',
-        ]);
-
-        $wageHistory = WageHistory::where('user_id', $attendance->user_id)
-            ->where('effective_from', '<=', $attendance->date)
-            ->orderByDesc('effective_from')
-            ->first();
-
-        $hourlyWage = $wageHistory ? $wageHistory->hourly_wage : $attendance->user->hourly_wage;
-
-        $attendance->update([
-            'clock_in' => $request->clock_in,
-            'clock_out' => $request->clock_out,
-            'hourly_wage' => $hourlyWage,
-        ]);
-
-        return redirect()->route('company.attendances', ['company' => $company->id])
-            ->with('success', '勤怠を更新しました。');
+{
+    // 他社の勤怠を操作させない
+    if ($attendance->user->company_id !== $company->id) {
+        abort(403, '他社の勤怠は更新できません');
     }
+
+    // 🔒 勤怠日が未来なら更新禁止
+    if (\Carbon\Carbon::parse($attendance->date)->isFuture()) {
+        return redirect()->back()
+            ->withErrors(['date' => '未来日の勤怠は更新できません。']);
+    }
+
+    // ⏰ 入退勤時刻のバリデーション
+    $request->validate([
+        'clock_in' => 'required|date_format:H:i',
+        'clock_out' => 'required|date_format:H:i|after:clock_in',
+    ], [
+        'clock_out.after' => '退勤時刻は出勤時刻より後の時間を指定してください。',
+    ]);
+
+    // 💰 時給の取得（当日の有効な履歴から）
+    $wageHistory = WageHistory::where('user_id', $attendance->user_id)
+        ->where('effective_from', '<=', $attendance->date)
+        ->orderByDesc('effective_from')
+        ->first();
+
+    $hourlyWage = $wageHistory ? $wageHistory->hourly_wage : $attendance->user->hourly_wage;
+
+    // 📝 勤怠更新
+    $attendance->update([
+        'clock_in' => $request->clock_in,
+        'clock_out' => $request->clock_out,
+        'hourly_wage' => $hourlyWage,
+    ]);
+
+    return redirect()->route('company.attendances', ['company' => $company->id])
+        ->with('success', '勤怠を更新しました。');
+}
 
     // 勤怠削除
     public function destroyAttendance(Company $company, Attendance $attendance)
@@ -141,6 +153,7 @@ class CompanyController extends Controller
  // 💵 給与一覧（22:00〜翌5:00は1.25倍）
 public function payrolls(Request $request, $companyId)
 {
+<<<<<<< HEAD
     $company = Company::findOrFail($companyId);
     $query = Attendance::with('user')
         ->whereHas('user', fn($q) => $q->where('company_id', $companyId))
@@ -227,6 +240,94 @@ public function payrolls(Request $request, $companyId)
 }
 
 
+=======
+    // 会社の社員を取得
+    $users = $company->users;
+
+    foreach ($users as $user) {
+        // 勤怠を月ごとにまとめる
+        $attendancesByMonth = Attendance::where('user_id', $user->id)
+            ->whereNotNull('clock_in')
+            ->whereNotNull('clock_out')
+            ->get()
+            ->groupBy(function ($att) {
+                return Carbon::parse($att->date)->startOfMonth()->toDateString();
+            });
+
+        foreach ($attendancesByMonth as $month => $attendances) {
+            // すでに Payroll があるか確認
+            $existingPayroll = Payroll::where('user_id', $user->id)
+                ->where('month', $month)
+                ->first();
+
+            if ($existingPayroll) {
+                continue; // 上書きしない
+            }
+
+            $totalHours = 0;
+            $totalPay = 0;
+
+            foreach ($attendances as $att) {
+                $hours = Carbon::parse($att->clock_in)->diffInMinutes(Carbon::parse($att->clock_out)) / 60;
+                $totalHours += $hours;
+                $totalPay += $hours * ($att->hourly_wage ?? 0);
+            }
+
+            Payroll::create([
+                'user_id' => $user->id,
+                'company_id' => $company->id,
+                'month' => $month,
+                'total_hours' => $totalHours,
+                'hourly_wage' => $attendances->last()->hourly_wage ?? 0, // 最後の勤怠の時給を参考
+                'total_pay' => $totalPay,
+            ]);
+        }
+    }
+
+    return redirect()->back()->with('success', '勤怠から給与を生成しました。既存給与は上書きされません。');
+}
+
+
+
+
+    // 💵 給与一覧
+    public function payrolls(Request $request, $companyId)
+{
+    $company = Company::findOrFail($companyId);
+    
+    $query = Attendance::with('user')
+        ->whereHas('user', fn($q) => $q->where('company_id', $companyId))
+        ->whereNotNull('clock_in')
+        ->whereNotNull('clock_out');
+
+    if ($request->month) {
+        $query->where('date', 'like', $request->month . '%');
+    }
+
+    if ($request->user_id) {
+        $query->where('user_id', $request->user_id);
+    }
+
+    $attendances = $query->orderBy('date', 'desc')->get();
+
+    // 勤務時間と給与を計算
+    foreach ($attendances as $attendance) {
+        if ($attendance->clock_in && $attendance->clock_out) {
+            $hours = Carbon::parse($attendance->clock_in)->diffInMinutes($attendance->clock_out) / 60;
+            $attendance->hours = $hours;
+            $attendance->pay = $hours * ($attendance->hourly_wage ?? 0); // ← attendanceのhourly_wageを使用
+        } else {
+            $attendance->hours = 0;
+            $attendance->pay = 0;
+        }
+    }
+
+    $users = User::where('company_id', $companyId)->get();
+
+    return view('company.payrolls', compact('attendances', 'users', 'company'));
+}
+
+>>>>>>> 25fddf929f22fc2de6050cc34b8dcfc8535b4094
     // 👤 社員登録フォーム
     public function createEmployee($companyId)
     {
@@ -402,33 +503,41 @@ public function payrolls(Request $request, $companyId)
 
     // 勤怠保存
     public function storeAttendance(Request $request, Company $company)
-    {
-        $validated = $request->validate([
-            'user_id' => 'required|exists:users,id',
-            'date' => 'required|date',
-            'clock_in' => 'nullable|date_format:H:i',
-            'clock_out' => 'nullable|date_format:H:i|after:clock_in',
-        ]);
+{
+    $validated = $request->validate([
+        'user_id' => 'required|exists:users,id',
+        // 👇 今日以前のみ許可するように変更
+        'date' => 'required|date|before_or_equal:today',
+        'clock_in' => 'nullable|date_format:H:i',
+        'clock_out' => 'nullable|date_format:H:i|after:clock_in',
+    ], [
+        // 👇 エラーメッセージ（日本語）
+        'date.before_or_equal' => '勤怠日は今日以前の日付を指定してください。',
+    ]);
 
-        $wageHistory = WageHistory::where('user_id', $validated['user_id'])
-            ->where('effective_from', '<=', $validated['date'])
-            ->orderByDesc('effective_from')
-            ->first();
+    // WageHistory から当日の時給を取得
+    $wageHistory = WageHistory::where('user_id', $validated['user_id'])
+        ->where('effective_from', '<=', $validated['date'])
+        ->orderByDesc('effective_from')
+        ->first();
 
-        $hourlyWage = $wageHistory ? $wageHistory->hourly_wage : User::find($validated['user_id'])->hourly_wage;
+    $hourlyWage = $wageHistory ? $wageHistory->hourly_wage : User::find($validated['user_id'])->hourly_wage;
 
-        Attendance::create([
-            'user_id' => $validated['user_id'],
-            'company_id' => $company->id,
-            'date' => $validated['date'],
-            'clock_in' => $validated['clock_in'],
-            'clock_out' => $validated['clock_out'],
-            'hourly_wage' => $hourlyWage,
-        ]);
+    // 勤怠作成
+    Attendance::create([
+        'user_id' => $validated['user_id'],
+        'company_id' => $company->id,
+        'date' => $validated['date'],
+        'clock_in' => $validated['clock_in'],
+        'clock_out' => $validated['clock_out'],
+        'hourly_wage' => $hourlyWage,
+    ]);
 
-        return redirect()->route('company.attendances', ['company' => $company->id])
-            ->with('success', '勤怠を追加しました。');
-    }
+    return redirect()->route('company.attendances', ['company' => $company->id])
+        ->with('success', '勤怠を追加しました。');
+}
+
+
 
     // 給与再計算（今月）
     public function recalculatePayroll(Company $company)
@@ -457,26 +566,44 @@ public function payrolls(Request $request, $companyId)
 
     // 時給更新
     public function updateWage(Request $request, Company $company, User $employee)
-    {
-        $validated = $request->validate([
-            'hourly_wage' => 'required|numeric|min:0',
+{
+    // 1️⃣ バリデーション
+    $validated = $request->validate([
+        'hourly_wage' => 'required|numeric|min:0',
+    ]);
+
+    // 2️⃣ WageHistory に追加（履歴管理）
+    $latestWage = WageHistory::where('user_id', $employee->id)
+        ->orderByDesc('effective_from')
+        ->first();
+
+    if (!$latestWage || $latestWage->hourly_wage != $validated['hourly_wage']) {
+        WageHistory::create([
+            'user_id' => $employee->id,
+            'hourly_wage' => $validated['hourly_wage'],
+            'effective_from' => now()->toDateString(),
         ]);
-
-        $latestWage = WageHistory::where('user_id', $employee->id)
-            ->orderByDesc('effective_from')
-            ->first();
-
-        if (!$latestWage || $latestWage->hourly_wage != $validated['hourly_wage']) {
-            WageHistory::create([
-                'user_id' => $employee->id,
-                'hourly_wage' => $validated['hourly_wage'],
-                'effective_from' => now()->toDateString(),
-            ]);
-        }
-
-        $employee->hourly_wage = $validated['hourly_wage'];
-        $employee->save();
-
-        return redirect()->back()->with('success', "{$employee->name} さんの時給を更新しました（以降の勤務に反映されます）。");
     }
+
+    // 3️⃣ users テーブルの hourly_wage を更新（今後の勤怠に反映）
+    $employee->hourly_wage = $validated['hourly_wage'];
+    $employee->save();
+
+    // 4️⃣ 最新の Payroll にも反映させる（既存の給与データを修正したい場合）
+    $latestPayroll = \App\Models\Payroll::where('user_id', $employee->id)
+        ->orderByDesc('month')
+        ->first();
+
+    if ($latestPayroll) {
+        $totalPay = $latestPayroll->total_hours * $validated['hourly_wage'];
+        $latestPayroll->update([
+            'hourly_wage' => $validated['hourly_wage'],
+            'total_pay' => $totalPay,
+        ]);
+    }
+
+    // 5️⃣ 完了メッセージを返す
+    return redirect()->back()->with('success', "{$employee->name} さんの時給を更新しました（以降の勤務・最新給与に反映されます）。");
+}
+
 }

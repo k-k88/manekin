@@ -2,39 +2,21 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Shift;
-use App\Models\User;
 use Illuminate\Http\Request;
+use App\Models\Shift;
+use App\Models\Company;
 
 class ShiftController extends Controller
 {
-    // LINEログイン用
-    public function loginWithLine($line_user_id)
+    public function edit(Company $company)
     {
-        $user = User::where('line_user_id', $line_user_id)->first();
-        if (!$user) {
-            return redirect('/')->with('error', 'ユーザーが見つかりません');
-        }
-
-        auth()->login($user);
-
-        return redirect()->route('shift.calendar', ['user' => $user->id]);
+        $shifts = Shift::where('company_id', $company->id)->get();
+        return view('company.shifts.edit', compact('company', 'shifts'));
     }
 
-    // カレンダー表示
-    public function calendar(User $user)
+    public function delete(Company $company)
     {
-        return view('shift.calendar', compact('user'));
-    }
-
-    // シフト保存
-    public function save(Request $request)
-    {
-        Shift::updateOrCreate(
-            ['user_id' => $request->user_id, 'shift_date' => $request->shift_date],
-            ['start_time' => $request->start_time, 'end_time' => $request->end_time]
-        );
-
-        return response()->json(['success' => true]);
+        $shifts = Shift::where('company_id', $company->id)->get();
+        return view('company.shifts.delete', compact('company', 'shifts'));
     }
 }

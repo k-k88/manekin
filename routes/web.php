@@ -92,7 +92,12 @@ Route::middleware(['auth'])->group(function () {
 Route::get('/shift/events/{user}', [ShiftController::class, 'events'])->name('shift.events');
 Route::post('/shift/save', [ShiftController::class, 'save'])->name('shift.save');
 
+Route::get('/company/{company}/shifts/edit', [ShiftController::class, 'edit'])->name('company.shifts.edit');
+Route::get('/company/{company}/shifts/delete', [ShiftController::class, 'delete'])->name('company.shifts.delete');
 
-   
+Route::prefix('company/{company}')->group(function () {
+    Route::get('/shifts/edit', [ShiftController::class, 'edit'])->name('company.shifts.edit');
+    Route::get('/shifts/delete', [ShiftController::class, 'delete'])->name('company.shifts.delete');
+});
 });
 

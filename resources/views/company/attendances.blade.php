@@ -9,6 +9,22 @@
         <a href="{{ route('company.attendances.create', $company->id) }}" class="btn btn-success">＋勤怠を追加</a>
     </div>
 
+    {{-- ✅ エラーメッセージ表示 --}}
+    @if ($errors->any())
+        <div class="alert alert-danger">
+            <ul class="mb-0">
+                @foreach ($errors->all() as $error)
+                    <li>{{ $error }}</li>
+                @endforeach
+            </ul>
+        </div>
+    @endif
+
+    {{-- ✅ 成功メッセージ表示 --}}
+    @if (session('success'))
+        <div class="alert alert-success">{{ session('success') }}</div>
+    @endif
+
     {{-- 月・社員フィルター --}}
     <form method="GET" class="mb-3 d-flex gap-2 align-items-center flex-wrap">
         <input type="month" name="month" value="{{ request('month', now()->format('Y-m')) }}" class="form-control w-auto">
@@ -42,11 +58,18 @@
                 <td>{{ $attendance->user->name }}</td>
                 <td>{{ $attendance->date }}</td>
 
+                {{-- 勤怠編集フォーム --}}
                 <form action="{{ route('company.attendances.update', ['company' => $company->id, 'attendance' => $attendance->id]) }}" method="POST">
                     @csrf
                     @method('PUT')
-                    <td><input type="time" name="clock_in" class="form-control" value="{{ $attendance->clock_in ? \Carbon\Carbon::parse($attendance->clock_in)->format('H:i') : '' }}"></td>
-                    <td><input type="time" name="clock_out" class="form-control" value="{{ $attendance->clock_out ? \Carbon\Carbon::parse($attendance->clock_out)->format('H:i') : '' }}"></td>
+                    <td>
+                        <input type="time" name="clock_in" class="form-control"
+                            value="{{ $attendance->clock_in ? \Carbon\Carbon::parse($attendance->clock_in)->format('H:i') : '' }}">
+                    </td>
+                    <td>
+                        <input type="time" name="clock_out" class="form-control"
+                            value="{{ $attendance->clock_out ? \Carbon\Carbon::parse($attendance->clock_out)->format('H:i') : '' }}">
+                    </td>
 
                     <td>
                         @if ($attendance->clock_in && $attendance->clock_out)
@@ -84,9 +107,5 @@
             @endforelse
         </tbody>
     </table>
-
-    @if(session('success'))
-        <div class="alert alert-success">{{ session('success') }}</div>
-    @endif
 </div>
 @endsection
