@@ -3,7 +3,7 @@
 @section('content')
 <div class="container mt-4">
     <h2 class="mb-4">💰 {{ $company->name }} 日別給与一覧</h2>
- 
+
     <div class="mb-3">
         <a href="{{ route('company.dashboard', ['company' => $company->id]) }}" class="btn btn-secondary">
             ← ダッシュボードに戻る
@@ -39,12 +39,12 @@
             <a href="{{ route('company.payrolls', ['company' => $company->id]) }}" class="btn btn-outline-secondary">リセット</a>
         </div>
     </form>
- 
+
     {{-- 勤怠から給与生成ボタン --}}
     <a href="{{ route('company.generatePayroll', ['company' => $company->id]) }}" class="btn btn-success mb-3">
         勤怠から給与を生成する
     </a>
- 
+
     {{-- CSV出力 --}}
     <a href="{{ route('company.payrollsCsv', ['company' => $company->id, 'month' => request('month')]) }}"
        class="btn btn-info mb-3">
@@ -72,7 +72,7 @@
                     <td>{{ $attendance->clock_in ?? '-' }}</td>
                     <td>{{ $attendance->clock_out ?? '-' }}</td>
                     <td>{{ number_format($attendance->hours ?? 0, 2) }} h</td>
-                    <td>{{ number_format($attendance->hourly_wage ?? 0) }} 円</td>
+                    <td>{{ number_format($attendance->effective_wage ?? 0) }} 円</td>
                     <td>{{ number_format($attendance->pay ?? 0) }} 円</td>
                 </tr>
             @empty
@@ -82,18 +82,11 @@
             @endforelse
         </tbody>
     </table>
- 
+
     {{-- 総給与 --}}
     @if($attendances->count())
         @php
-            $totalPay = $attendances->sum(function($a) {
-                if ($a->clock_in && $a->clock_out) {
-                    $hours = \Carbon\Carbon::parse($a->clock_in)->diffInMinutes($a->clock_out) / 60;
-                    $wage = $a->hourly_wage ?? 0; // ← Attendance に保存された時給を使用
-                    return $hours * $wage;
-                }
-                return 0;
-            });
+            $totalPay = $attendances->sum('pay');
         @endphp
         <div class="mt-3 text-end fw-bold">
             総給与: {{ number_format($totalPay) }} 円
