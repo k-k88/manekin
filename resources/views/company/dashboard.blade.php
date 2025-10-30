@@ -83,9 +83,6 @@
             ❌ シフト削除
         </a>
       </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">閉じる</button>
-      </div>
     </div>
   </div>
 </div>
