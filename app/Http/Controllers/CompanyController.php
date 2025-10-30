@@ -97,32 +97,44 @@ class CompanyController extends Controller
 
     // 更新処理
     public function updateAttendance(Request $request, Company $company, Attendance $attendance)
-    {
-        if ($attendance->user->company_id !== $company->id) {
-            abort(403, '他社の勤怠は更新できません');
-        }
-
-        $request->validate([
-            'clock_in' => 'required|date_format:H:i',
-            'clock_out' => 'required|date_format:H:i|after:clock_in',
-        ]);
-
-        $wageHistory = WageHistory::where('user_id', $attendance->user_id)
-            ->where('effective_from', '<=', $attendance->date)
-            ->orderByDesc('effective_from')
-            ->first();
-
-        $hourlyWage = $wageHistory ? $wageHistory->hourly_wage : $attendance->user->hourly_wage;
-
-        $attendance->update([
-            'clock_in' => $request->clock_in,
-            'clock_out' => $request->clock_out,
-            'hourly_wage' => $hourlyWage,
-        ]);
-
-        return redirect()->route('company.attendances', ['company' => $company->id])
-            ->with('success', '勤怠を更新しました。');
+{
+    // 他社の勤怠を操作させない
+    if ($attendance->user->company_id !== $company->id) {
+        abort(403, '他社の勤怠は更新できません');
     }
+
+    // 🔒 勤怠日が未来なら更新禁止
+    if (\Carbon\Carbon::parse($attendance->date)->isFuture()) {
+        return redirect()->back()
+            ->withErrors(['date' => '未来日の勤怠は更新できません。']);
+    }
+
+    // ⏰ 入退勤時刻のバリデーション
+    $request->validate([
+        'clock_in' => 'required|date_format:H:i',
+        'clock_out' => 'required|date_format:H:i|after:clock_in',
+    ], [
+        'clock_out.after' => '退勤時刻は出勤時刻より後の時間を指定してください。',
+    ]);
+
+    // 💰 時給の取得（当日の有効な履歴から）
+    $wageHistory = WageHistory::where('user_id', $attendance->user_id)
+        ->where('effective_from', '<=', $attendance->date)
+        ->orderByDesc('effective_from')
+        ->first();
+
+    $hourlyWage = $wageHistory ? $wageHistory->hourly_wage : $attendance->user->hourly_wage;
+
+    // 📝 勤怠更新
+    $attendance->update([
+        'clock_in' => $request->clock_in,
+        'clock_out' => $request->clock_out,
+        'hourly_wage' => $hourlyWage,
+    ]);
+
+    return redirect()->route('company.attendances', ['company' => $company->id])
+        ->with('success', '勤怠を更新しました。');
+}
 
     // 勤怠削除
     public function destroyAttendance(Company $company, Attendance $attendance)
@@ -404,9 +416,13 @@ public function generatePayroll(Company $company)
 {
     $validated = $request->validate([
         'user_id' => 'required|exists:users,id',
-        'date' => 'required|date',
+        // 👇 今日以前のみ許可するように変更
+        'date' => 'required|date|before_or_equal:today',
         'clock_in' => 'nullable|date_format:H:i',
         'clock_out' => 'nullable|date_format:H:i|after:clock_in',
+    ], [
+        // 👇 エラーメッセージ（日本語）
+        'date.before_or_equal' => '勤怠日は今日以前の日付を指定してください。',
     ]);
 
     // WageHistory から当日の時給を取得
@@ -424,12 +440,13 @@ public function generatePayroll(Company $company)
         'date' => $validated['date'],
         'clock_in' => $validated['clock_in'],
         'clock_out' => $validated['clock_out'],
-        'hourly_wage' => $hourlyWage, // ← 保存済み時給
+        'hourly_wage' => $hourlyWage,
     ]);
 
     return redirect()->route('company.attendances', ['company' => $company->id])
         ->with('success', '勤怠を追加しました。');
 }
+
 
 
     // 給与再計算（今月）
