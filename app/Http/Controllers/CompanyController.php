@@ -13,7 +13,6 @@ use App\Models\Store;
 use Carbon\Carbon;
 use Barryvdh\DomPDF\Facade\Pdf;
 use App\Models\WageHistory;
-
 class CompanyController extends Controller
 {
     // ======================
@@ -51,14 +50,8 @@ class CompanyController extends Controller
             ->get();
  
         return view('company.dashboard', compact(
-            'company',
-            'user',
-            'today_attendance_count',
-            'employee_count',
-            'store_count',
-            'monthly_attendance_count',
-            'active_employee_count',
-            'recent_attendances'
+            'company', 'user', 'today_attendance_count', 'employee_count',
+            'store_count', 'monthly_attendance_count', 'active_employee_count', 'recent_attendances'
         ));
     }
  
@@ -321,11 +314,11 @@ public function generatePayroll(Company $company)
  
         if (!empty($validated['phone'])) {
             $digits = preg_replace('/\D/', '', $validated['phone']);
-            if (strlen($digits) === 10) {
-                $validated['phone'] = preg_replace('/(\d{2,3})(\d{3,4})(\d{4})/', '$1-$2-$3', $digits);
-            } elseif (strlen($digits) === 11) {
-                $validated['phone'] = preg_replace('/(\d{3})(\d{4})(\d{4})/', '$1-$2-$3', $digits);
-            }
+            $validated['phone'] = match (strlen($digits)) {
+                10 => preg_replace('/(\d{2,3})(\d{3,4})(\d{4})/', '$1-$2-$3', $digits),
+                11 => preg_replace('/(\d{3})(\d{4})(\d{4})/', '$1-$2-$3', $digits),
+                default => $validated['phone'],
+            };
         }
  
         $validated['company_id'] = $companyId;
@@ -371,11 +364,11 @@ public function generatePayroll(Company $company)
  
         if (!empty($validated['phone'])) {
             $digits = preg_replace('/\D/', '', $validated['phone']);
-            if (strlen($digits) === 10) {
-                $validated['phone'] = preg_replace('/(\d{2,3})(\d{3,4})(\d{4})/', '$1-$2-$3', $digits);
-            } elseif (strlen($digits) === 11) {
-                $validated['phone'] = preg_replace('/(\d{3})(\d{4})(\d{4})/', '$1-$2-$3', $digits);
-            }
+            $validated['phone'] = match (strlen($digits)) {
+                10 => preg_replace('/(\d{2,3})(\d{3,4})(\d{4})/', '$1-$2-$3', $digits),
+                11 => preg_replace('/(\d{3})(\d{4})(\d{4})/', '$1-$2-$3', $digits),
+                default => $validated['phone'],
+            };
         }
  
         $employee->update($validated);
@@ -383,7 +376,7 @@ public function generatePayroll(Company $company)
         return redirect()->route('company.employees', $company)
             ->with('success', '社員情報を更新しました。');
     }
-
+ 
  
     // 👤 社員削除
     public function deleteEmployee($companyId, $employeeId)
@@ -409,54 +402,54 @@ public function payrollsCsv(Company $company)
         ->whereYear('date', Carbon::parse($month)->year)
         ->whereMonth('date', Carbon::parse($month)->month)
         ->get();
-
+ 
     $csvData = "社員名,日付,出勤,退勤,勤務時間(h),時給,給与(円)\n";
-
+ 
     foreach ($attendances as $attendance) {
         if (!$attendance->clock_in || !$attendance->clock_out) continue;
-
+ 
         // 出勤・退勤日時
         $clockIn = Carbon::parse($attendance->date . ' ' . $attendance->clock_in);
         $clockOut = Carbon::parse($attendance->date . ' ' . $attendance->clock_out);
-
+ 
         // ⏰ 日跨ぎ対応（退勤が翌日）
         if ($clockOut->lessThanOrEqualTo($clockIn)) {
             $clockOut->addDay();
         }
-
+ 
         // 深夜時間帯の設定（22:00〜翌5:00）
         $nightStart = Carbon::parse($attendance->date . ' 22:00');
         $nightEnd = Carbon::parse($attendance->date . ' 05:00')->addDay();
-
+ 
         // 深夜労働時間を計算
         $overlapStart = $clockIn->greaterThan($nightStart) ? $clockIn : $nightStart;
         $overlapEnd = $clockOut->lessThan($nightEnd) ? $clockOut : $nightEnd;
-
+ 
         $nightMinutes = $overlapEnd->gt($overlapStart)
             ? $overlapStart->diffInMinutes($overlapEnd)
             : 0;
-
+ 
         $totalMinutes = $clockIn->diffInMinutes($clockOut);
         $normalMinutes = max(0, $totalMinutes - $nightMinutes);
-
+ 
         // 時給を取得（WageHistory or User）
         $wageHistory = WageHistory::where('user_id', $attendance->user_id)
             ->where('effective_from', '<=', $attendance->date)
             ->orderByDesc('effective_from')
             ->first();
-
+ 
         $hourlyWage = $wageHistory
             ? $wageHistory->hourly_wage
             : ($attendance->user->hourly_wage ?? 0);
-
+ 
         // 給与計算（深夜25%割増）
         $normalPay = ($normalMinutes / 60) * $hourlyWage;
         $nightPay = ($nightMinutes / 60) * $hourlyWage * 1.25;
         $pay = round($normalPay + $nightPay);
-
+ 
         // 合計勤務時間（時間単位）
         $hours = round($totalMinutes / 60, 2);
-
+ 
         // CSV 1行追加
         $csvData .= implode(',', [
             $attendance->user->name,
@@ -468,15 +461,15 @@ public function payrollsCsv(Company $company)
             $pay
         ]) . "\n";
     }
-
+ 
     $csvData = mb_convert_encoding($csvData, 'SJIS-win', 'UTF-8');
     $filename = $company->name . '-' . str_replace('-', '', $month) . '.csv';
-
+ 
     return response($csvData)
         ->header('Content-Type', 'text/csv')
         ->header('Content-Disposition', "attachment; filename={$filename}");
 }
-
+ 
     // 勤怠追加フォーム
     public function createAttendance(Company $company)
     {
@@ -493,56 +486,56 @@ public function storeAttendance(Request $request, Company $company)
         'clock_in' => ['nullable', 'regex:/^([0-2]?[0-9]):[0-5][0-9]$/'],
         'clock_out' => ['nullable', 'regex:/^([0-2]?[0-9]):[0-5][0-9]$/'],
     ]);
-
+ 
     $date = $validated['date'];
     $clockIn = $validated['clock_in'];
     $clockOut = $validated['clock_out'];
-
+ 
     // 🔸 同じ日・同じユーザーの勤怠が既に存在するかチェック
     $exists = \App\Models\Attendance::where('user_id', $validated['user_id'])
         ->where('date', $date)
         ->exists();
-
+ 
     if ($exists) {
         return redirect()
             ->back()
             ->withInput()
             ->with('error', 'この社員はすでに出勤しています。');
     }
-
+ 
     // 🔸 時刻文字列をCarbonに変換（日跨ぎ対応）
     $parseTime = function ($baseDate, $time) {
         if (!$time) return null;
-
+ 
         [$hour, $minute] = explode(':', $time);
-
+ 
         // 24時以上なら翌日扱いに補正
         if ((int)$hour >= 24) {
             $hour -= 24;
             return \Carbon\Carbon::parse($baseDate)->addDay()->setTime($hour, (int)$minute);
         }
-
+ 
         return \Carbon\Carbon::parse($baseDate)->setTime((int)$hour, (int)$minute);
     };
-
+ 
     $clockInCarbon = $parseTime($date, $clockIn);
     $clockOutCarbon = $parseTime($date, $clockOut);
-
+ 
     // 🔸 退勤が出勤より前なら翌日扱い
     if ($clockInCarbon && $clockOutCarbon && $clockOutCarbon->lessThanOrEqualTo($clockInCarbon)) {
         $clockOutCarbon->addDay();
     }
-
+ 
     // 🔸 時給を取得（履歴優先）
     $wageHistory = \App\Models\WageHistory::where('user_id', $validated['user_id'])
         ->where('effective_from', '<=', $date)
         ->orderByDesc('effective_from')
         ->first();
-
+ 
     $hourlyWage = $wageHistory
         ? $wageHistory->hourly_wage
         : \App\Models\User::find($validated['user_id'])->hourly_wage;
-
+ 
     // 🔸 勤怠データを登録
     \App\Models\Attendance::create([
         'user_id' => $validated['user_id'],
@@ -552,12 +545,14 @@ public function storeAttendance(Request $request, Company $company)
         'clock_out' => $clockOutCarbon,
         'hourly_wage' => $hourlyWage,
     ]);
-
+ 
     return redirect()
         ->route('company.attendances', ['company' => $company->id])
         ->with('success', '勤怠を追加しました。');
 }
-
+ 
+ 
+ 
     // 給与再計算（今月）
     public function recalculatePayroll(Company $company)
     {
@@ -631,14 +626,31 @@ public function destroyAttendance(Company $company, Attendance $attendance)
     if ($attendance->user->company_id !== $company->id) {
         abort(403, '他社の勤怠は削除できません');
     }
-
+ 
     // ✅ 過去でも削除可能に変更
     $attendance->delete();
-
+ 
     return redirect()
         ->route('company.attendances', $company->id)
         ->with('success', '勤怠データを削除しました。');
 }
-
-
+ 
+public function update(Request $request, Company $company)
+{
+    $validated = $request->validate([
+        'name' => 'required|string|max:255',
+        'code' => 'required|string|max:50',
+        'cutoff_date' => 'required|integer|min:1|max:31', // 締め日
+    ]);
+ 
+    $company->update([
+        'name' => $validated['name'],
+        'code' => $validated['code'],
+        'cutoff_date' => $validated['cutoff_date'], // ここ！
+    ]);
+ 
+    return redirect()
+        ->route('company.settings', $company->id)
+        ->with('success', '会社情報を更新しました');
+}
 }

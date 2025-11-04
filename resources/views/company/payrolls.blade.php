@@ -1,32 +1,28 @@
-{{-- resources/views/company/payrolls.blade.php --}}
 @extends('layouts.app')
-
+ 
 @section('content')
 <div class="container mt-4">
     <h2 class="mb-4">💰 {{ $company->name }} 日別給与一覧</h2>
-
-    {{-- 戻るボタン --}}
+ 
     <div class="mb-3">
         <a href="{{ route('company.dashboard', ['company' => $company->id]) }}" class="btn btn-secondary">
             ← ダッシュボードに戻る
         </a>
     </div>
-
+ 
     {{-- フラッシュメッセージ --}}
     @if(session('success'))
         <div class="alert alert-success">
             {{ session('success') }}
         </div>
     @endif
-
+ 
     {{-- フィルター --}}
     <form method="GET" class="mb-3 d-flex gap-2 align-items-end flex-wrap">
         <div>
             <label for="month">月</label>
-            <input type="month" id="month" name="month" class="form-control"
-                   value="{{ request('month', now()->format('Y-m')) }}">
+            <input type="month" id="month" name="month" class="form-control" value="{{ request('month', now()->format('Y-m')) }}">
         </div>
-
         <div>
             <label for="user_id">社員</label>
             <select id="user_id" name="user_id" class="form-select">
@@ -38,22 +34,18 @@
                 @endforeach
             </select>
         </div>
-
         <div class="align-self-end">
             <button type="submit" class="btn btn-primary">表示</button>
-            <a href="{{ route('company.payrolls', ['company' => $company->id]) }}"
-               class="btn btn-outline-secondary">
-               リセット
-            </a>
+            <a href="{{ route('company.payrolls', ['company' => $company->id]) }}" class="btn btn-outline-secondary">リセット</a>
         </div>
     </form>
-
+ 
     {{-- CSV出力 --}}
     <a href="{{ route('company.payrollsCsv', ['company' => $company->id, 'month' => request('month')]) }}"
        class="btn btn-info mb-3">
-        CSVでダウンロード
+       CSVでダウンロード
     </a>
-
+ 
     {{-- 給与テーブル --}}
     <table class="table table-bordered table-hover align-middle shadow-sm">
         <thead class="table-light">
@@ -72,15 +64,9 @@
                 <tr>
                     <td>{{ $attendance->user->name }}</td>
                     <td>{{ $attendance->date }}</td>
-                    <td>{{ $attendance->clock_in ? \Carbon\Carbon::parse($attendance->clock_in)->format('H:i') : '-' }}</td>
-                    <td>{{ $attendance->clock_out ? \Carbon\Carbon::parse($attendance->clock_out)->format('H:i') : '-' }}</td>
-                    <td>
-                        @if(isset($attendance->hours))
-                            {{ floor($attendance->hours) }}時間{{ round(fmod($attendance->hours, 1) * 60) }}分
-                        @else
-                            -
-                        @endif
-                    </td>
+                    <td>{{ $attendance->clock_in ?? '-' }}</td>
+                    <td>{{ $attendance->clock_out ?? '-' }}</td>
+                    <td>{{ number_format($attendance->hours ?? 0, 2) }} h</td>
                     <td>{{ number_format($attendance->effective_wage ?? 0) }} 円</td>
                     <td>{{ number_format($attendance->pay ?? 0) }} 円</td>
                 </tr>
@@ -91,7 +77,7 @@
             @endforelse
         </tbody>
     </table>
-
+ 
     {{-- 総給与 --}}
     @if($attendances->count())
         @php

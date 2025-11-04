@@ -62,7 +62,9 @@ class LineWebhookController extends Controller
                 } else {
                     $attendance = Attendance::firstOrCreate(
                         ['user_id' => $user->id, 'date' => now()->toDateString()],
-                        ['store_id' => $user->store_id]
+                        ['store_id' => $user->store_id, 
+                        'company_id' => $user->company_id,
+                        ]
                     );
 
                     if (!$attendance->clock_in) {
@@ -76,24 +78,75 @@ class LineWebhookController extends Controller
             }
 
             // 🔹 退勤コマンド
-            elseif ($text === '退勤') {
-                $user = User::where('line_user_id', $userId)->first();
-                if (!$user) {
-                    $replyText = "⚠️ 登録がまだです。「登録 [企業コード] [社員ID]」を送ってください。";
-                } else {
-                    $attendance = Attendance::where('user_id', $user->id)
-                        ->where('date', now()->toDateString())
-                        ->first();
+elseif ($text === '退勤') {
+    $user = User::where('line_user_id', $userId)->first();
+    if (!$user) {
+        $replyText = "⚠️ 登録がまだです。「登録 [企業コード] [社員ID]」を送ってください。";
+    } else {
 
-                    if ($attendance && !$attendance->clock_out) {
-                        $attendance->clock_out = now();
-                        $attendance->save();
-                        $replyText = "🏁 退勤を記録しました。";
-                    } else {
-                        $replyText = "⚠️ 出勤していないか、すでに退勤済みです。";
-                    }
-                }
+        $attendance = Attendance::where('user_id', $user->id)
+            ->where('date', now()->toDateString())
+            ->first();
+
+        if ($attendance && !$attendance->clock_out) {
+            $attendance->clock_out = now();
+            $attendance->save();
+
+            // ✅ ここから給与計算 -------------------------------------
+
+            // 1) 勤務分数を計算
+            $start = \Carbon\Carbon::parse($attendance->clock_in);
+            $end   = \Carbon\Carbon::parse($attendance->clock_out);
+            $workedMinutes = $end->diffInMinutes($start);
+
+            // 2) 今の時給を取得（WageHistoryの最新レコード）
+           // 2) 今の時給を取得（WageHistoryの最新で、今日以前に有効なもの）
+            $wageHistory = \App\Models\WageHistory::where('user_id', $user->id)
+                ->where('effective_from', '<=', now()) // ← 超重要
+                ->orderByDesc('effective_from')
+                ->first();
+
+            $wage = $wageHistory->hourly_wage ?? 0;
+
+            // 3) 今日の給与を計算
+            $todaySalary = floor(($workedMinutes / 60) * $wage);
+
+            // 4) 今月の累計時間 + 累計給与を集計
+            $monthStart = now()->startOfMonth();
+            $monthEnd = now()->endOfMonth();
+
+            $attendances = Attendance::where('user_id', $user->id)
+                ->whereBetween('date', [$monthStart, $monthEnd])
+                ->whereNotNull('clock_in')
+                ->whereNotNull('clock_out')
+                ->get();
+
+            $totalMinutes = 0;
+            foreach ($attendances as $a) {
+                $totalMinutes += \Carbon\Carbon::parse($a->clock_in)->diffInMinutes(\Carbon\Carbon::parse($a->clock_out));
             }
+
+            $totalSalary = floor(($totalMinutes / 60) * $wage);
+
+            // 分 → 時間:分 表示に変換
+            $h = floor($totalMinutes / 60);
+            $m = $totalMinutes % 60;
+            $workedDisplay = sprintf("%d時間%02d分", $h, $m);
+
+            // ✅ LINEに返信
+            $replyText = "🏁 退勤を記録しました。\n\n"
+                       . "本日の給与：¥" . number_format($todaySalary) . "\n"
+                       . "今月の累計勤務：{$workedDisplay}\n"
+                       . "今月の累計給与：¥" . number_format($totalSalary);
+
+            // ✅ ここまで --------------------------------------------
+
+        } else {
+            $replyText = "⚠️ 出勤していないか、すでに退勤済みです。";
+        }
+    }
+}
+
 
             // 🔹 シフト登録コマンド
             elseif ($text === 'シフト登録') {
