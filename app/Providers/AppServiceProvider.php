@@ -20,10 +20,12 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        
-    if (config('app.env') === 'production') {
-        URL::forceScheme('https');
-    
+        // ✅ ngrok（https環境）でもHTTPSを強制
+        if (
+            config('app.env') === 'production' ||
+            str_contains(config('app.url'), 'ngrok-free.dev')
+        ) {
+           URL::forceScheme('https');
+        }
     }
-}
 }

@@ -51,14 +51,8 @@ class CompanyController extends Controller
             ->get();
  
         return view('company.dashboard', compact(
-            'company',
-            'user',
-            'today_attendance_count',
-            'employee_count',
-            'store_count',
-            'monthly_attendance_count',
-            'active_employee_count',
-            'recent_attendances'
+            'company', 'user', 'today_attendance_count', 'employee_count',
+            'store_count', 'monthly_attendance_count', 'active_employee_count', 'recent_attendances'
         ));
     }
  
@@ -321,11 +315,11 @@ public function generatePayroll(Company $company)
  
         if (!empty($validated['phone'])) {
             $digits = preg_replace('/\D/', '', $validated['phone']);
-            if (strlen($digits) === 10) {
-                $validated['phone'] = preg_replace('/(\d{2,3})(\d{3,4})(\d{4})/', '$1-$2-$3', $digits);
-            } elseif (strlen($digits) === 11) {
-                $validated['phone'] = preg_replace('/(\d{3})(\d{4})(\d{4})/', '$1-$2-$3', $digits);
-            }
+            $validated['phone'] = match (strlen($digits)) {
+                10 => preg_replace('/(\d{2,3})(\d{3,4})(\d{4})/', '$1-$2-$3', $digits),
+                11 => preg_replace('/(\d{3})(\d{4})(\d{4})/', '$1-$2-$3', $digits),
+                default => $validated['phone'],
+            };
         }
  
         $validated['company_id'] = $companyId;
@@ -371,11 +365,11 @@ public function generatePayroll(Company $company)
  
         if (!empty($validated['phone'])) {
             $digits = preg_replace('/\D/', '', $validated['phone']);
-            if (strlen($digits) === 10) {
-                $validated['phone'] = preg_replace('/(\d{2,3})(\d{3,4})(\d{4})/', '$1-$2-$3', $digits);
-            } elseif (strlen($digits) === 11) {
-                $validated['phone'] = preg_replace('/(\d{3})(\d{4})(\d{4})/', '$1-$2-$3', $digits);
-            }
+            $validated['phone'] = match (strlen($digits)) {
+                10 => preg_replace('/(\d{2,3})(\d{3,4})(\d{4})/', '$1-$2-$3', $digits),
+                11 => preg_replace('/(\d{3})(\d{4})(\d{4})/', '$1-$2-$3', $digits),
+                default => $validated['phone'],
+            };
         }
  
         $employee->update($validated);
