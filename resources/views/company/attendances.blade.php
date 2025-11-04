@@ -1,15 +1,24 @@
 @extends('layouts.app')
-
+ 
 @section('content')
 <div class="container mt-4">
     <h2 class="mb-4">🕒 {{ $company->name }} 勤怠一覧</h2>
-
+ 
     <div class="mb-3 d-flex gap-2">
         <a href="{{ route('company.dashboard', $company->id) }}" class="btn btn-secondary">← ダッシュボードに戻る</a>
         <a href="{{ route('company.attendances.create', $company->id) }}" class="btn btn-success">＋勤怠を追加</a>
     </div>
-
-    {{-- ✅ エラーメッセージ表示 --}}
+ 
+    {{-- ✅ 成功・エラー メッセージ --}}
+    @if (session('success'))
+        <div class="alert alert-success">{{ session('success') }}</div>
+    @endif
+ 
+    @if (session('error'))
+        <div class="alert alert-danger">{{ session('error') }}</div>
+    @endif
+ 
+    {{-- バリデーションエラー --}}
     @if ($errors->any())
         <div class="alert alert-danger">
             <ul class="mb-0">
@@ -19,12 +28,7 @@
             </ul>
         </div>
     @endif
-
-    {{-- ✅ 成功メッセージ表示 --}}
-    @if (session('success'))
-        <div class="alert alert-success">{{ session('success') }}</div>
-    @endif
-
+ 
     {{-- 月・社員フィルター --}}
     <form method="GET" class="mb-3 d-flex gap-2 align-items-center flex-wrap">
         <input type="month" name="month" value="{{ request('month', now()->format('Y-m')) }}" class="form-control w-auto">
@@ -39,7 +43,7 @@
         <button type="submit" class="btn btn-primary">表示</button>
         <a href="{{ route('company.attendances', $company->id) }}" class="btn btn-outline-secondary">リセット</a>
     </form>
-
+ 
     <table class="table table-bordered table-hover align-middle shadow-sm">
         <thead class="table-light">
             <tr>
@@ -57,28 +61,67 @@
             <tr>
                 <td>{{ $attendance->user->name }}</td>
                 <td>{{ $attendance->date }}</td>
-
+ 
                 {{-- 勤怠編集フォーム --}}
                 <form action="{{ route('company.attendances.update', ['company' => $company->id, 'attendance' => $attendance->id]) }}" method="POST">
                     @csrf
                     @method('PUT')
+ 
+                    @php
+                        $clockIn = $attendance->clock_in ? \Carbon\Carbon::parse($attendance->clock_in) : null;
+                        $clockOut = $attendance->clock_out ? \Carbon\Carbon::parse($attendance->clock_out) : null;
+ 
+                        // 出勤・退勤時刻の表示用
+                        $displayClockIn = $clockIn ? $clockIn->format('H:i') : '';
+                        $displayClockOut = '';
+ 
+                        if ($attendance->clock_out) {
+                            $outHour = (int)substr($attendance->clock_out, 0, 2);
+                            $outMin = (int)substr($attendance->clock_out, 3, 2);
+ 
+                            // 25:00〜28:00などを翌日4:00扱いで表示
+                            if ($outHour >= 24) {
+                                $displayClockOut = sprintf('%02d:%02d', $outHour - 24, $outMin);
+                            } else {
+                                $displayClockOut = sprintf('%02d:%02d', $outHour, $outMin);
+                            }
+                        }
+                    @endphp
+ 
                     <td>
-                        <input type="time" name="clock_in" class="form-control"
-                            value="{{ $attendance->clock_in ? \Carbon\Carbon::parse($attendance->clock_in)->format('H:i') : '' }}">
+                        <input type="text" name="clock_in" class="form-control time-input" value="{{ $displayClockIn }}" placeholder="HH:MM">
                     </td>
                     <td>
-                        <input type="time" name="clock_out" class="form-control"
-                            value="{{ $attendance->clock_out ? \Carbon\Carbon::parse($attendance->clock_out)->format('H:i') : '' }}">
+                        <input type="text" name="clock_out" class="form-control time-input" value="{{ $displayClockOut }}" placeholder="HH:MM">
                     </td>
-
+ 
+                    {{-- ✅ 勤務時間計算部分（修正版） --}}
                     <td>
-                        @if ($attendance->clock_in && $attendance->clock_out)
-                            {{ \Carbon\Carbon::parse($attendance->clock_in)->diffInHours($attendance->clock_out) }} 時間
+                        @if ($clockIn && $attendance->clock_out)
+                            @php
+                                $outHourInt = (int)substr($attendance->clock_out, 0, 2);
+                                $outMinuteInt = (int)substr($attendance->clock_out, 3, 2);
+ 
+                                // 翌日対応（例: 28:00 → 翌日 4:00）
+                                $calcOut = $clockIn->copy();
+                                if ($outHourInt >= 24) {
+                                    $calcOut->addDay()->setTime($outHourInt - 24, $outMinuteInt);
+                                } else {
+                                    $calcOut->setTime($outHourInt, $outMinuteInt);
+                                    // 通常フォーマットでも退勤が出勤より前なら翌日扱い
+                                    if ($calcOut->lessThanOrEqualTo($clockIn)) {
+                                        $calcOut->addDay();
+                                    }
+                                }
+ 
+                                $hours = $clockIn->diffInMinutes($calcOut) / 60;
+                            @endphp
+                            {{ number_format($hours, 2) }} 時間
                         @else
                             -
                         @endif
                     </td>
-
+ 
                     <td>
                         @if ($attendance->status === 'approved')
                             <span class="badge bg-success">承認済み</span>
@@ -88,12 +131,15 @@
                             <span class="badge bg-secondary">未申請</span>
                         @endif
                     </td>
-
+ 
                     <td class="d-flex gap-1">
                         <button type="submit" class="btn btn-sm btn-primary">更新</button>
                 </form>
-
-                        <form action="{{ route('company.attendances.destroy', ['company' => $company->id, 'attendance' => $attendance->id]) }}" method="POST" onsubmit="return confirm('この勤怠データを削除しますか？');">
+ 
+                        {{-- ✅ 削除フォーム --}}
+                        <form action="{{ route('company.attendances.destroy', ['company' => $company->id, 'attendance' => $attendance->id]) }}"
+                              method="POST"
+                              onsubmit="return confirm('この勤怠データを削除しますか？');">
                             @csrf
                             @method('DELETE')
                             <button type="submit" class="btn btn-sm btn-danger">削除</button>
@@ -108,4 +154,21 @@
         </tbody>
     </table>
 </div>
+ 
+{{-- 🔽 コロン自動挿入スクリプト --}}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.time-input').forEach(input => {
+        input.addEventListener('input', function(e) {
+            let val = e.target.value.replace(/\D/g, '');
+            if (val.length >= 3) {
+                val = val.substring(0, 2) + ':' + val.substring(2, 4);
+            }
+            e.target.value = val;
+        });
+    });
+});
+</script>
 @endsection
+ 
+ 

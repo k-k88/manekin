@@ -4,15 +4,23 @@
             <li class="list-group-item">
                 🟢 {{ $log->user->name }} さんが
                 {{ \Carbon\Carbon::parse($log->date)->format('Y-m-d') }}
-                {{ \Carbon\Carbon::parse($log->clock_in)->format('H:i') }} に出勤しました
+                <span class="fw-bold" style="color: #28a745;">
+                    {{ \Carbon\Carbon::parse($log->clock_in)->format('H:i') }}
+                </span>
+                に出勤しました
             </li>
         @endif
         @if($log->clock_out)
             <li class="list-group-item">
                 🔴 {{ $log->user->name }} さんが
                 {{ \Carbon\Carbon::parse($log->date)->format('Y-m-d') }}
-                {{ \Carbon\Carbon::parse($log->clock_out)->format('H:i') }} に退勤しました
+                <span class="fw-bold" style="color: #dc3545;">
+                    {{ \Carbon\Carbon::parse($log->clock_out)->format('H:i') }}
+                </span>
+                に退勤しました
             </li>
         @endif
     @endforeach
 </ul>
+ 
+ 
