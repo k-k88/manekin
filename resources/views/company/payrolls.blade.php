@@ -5,10 +5,7 @@
 <div class="container mt-4">
     <h2 class="mb-4">💰 {{ $company->name }} 日別給与一覧</h2>
 
-<<<<<<< HEAD
     {{-- 戻るボタン --}}
-=======
->>>>>>> 25fddf929f22fc2de6050cc34b8dcfc8535b4094
     <div class="mb-3">
         <a href="{{ route('company.dashboard', ['company' => $company->id]) }}" class="btn btn-secondary">
             ← ダッシュボードに戻る
@@ -51,14 +48,6 @@
         </div>
     </form>
 
-<<<<<<< HEAD
-=======
-    {{-- 勤怠から給与生成ボタン --}}
-    <a href="{{ route('company.generatePayroll', ['company' => $company->id]) }}" class="btn btn-success mb-3">
-        勤怠から給与を生成する
-    </a>
-
->>>>>>> 25fddf929f22fc2de6050cc34b8dcfc8535b4094
     {{-- CSV出力 --}}
     <a href="{{ route('company.payrollsCsv', ['company' => $company->id, 'month' => request('month')]) }}"
        class="btn btn-info mb-3">
@@ -83,7 +72,6 @@
                 <tr>
                     <td>{{ $attendance->user->name }}</td>
                     <td>{{ $attendance->date }}</td>
-<<<<<<< HEAD
                     <td>{{ $attendance->clock_in ? \Carbon\Carbon::parse($attendance->clock_in)->format('H:i') : '-' }}</td>
                     <td>{{ $attendance->clock_out ? \Carbon\Carbon::parse($attendance->clock_out)->format('H:i') : '-' }}</td>
                     <td>
@@ -93,13 +81,7 @@
                             -
                         @endif
                     </td>
-                    <td>{{ number_format($attendance->hourly_wage ?? 0) }} 円</td>
-=======
-                    <td>{{ $attendance->clock_in ?? '-' }}</td>
-                    <td>{{ $attendance->clock_out ?? '-' }}</td>
-                    <td>{{ number_format($attendance->hours ?? 0, 2) }} h</td>
                     <td>{{ number_format($attendance->effective_wage ?? 0) }} 円</td>
->>>>>>> 25fddf929f22fc2de6050cc34b8dcfc8535b4094
                     <td>{{ number_format($attendance->pay ?? 0) }} 円</td>
                 </tr>
             @empty

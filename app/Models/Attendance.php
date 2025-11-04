@@ -20,7 +20,7 @@ class Attendance extends Model
         'date',
         'clock_in',
         'clock_out',
-        'hourly_wage', // 保存済み時給
+        'hourly_wage',
     ];
 
     // =========================
@@ -36,78 +36,8 @@ class Attendance extends Model
         return $this->hasOne(Payroll::class);
     }
 
-<<<<<<< HEAD
-    protected static function booted()
-    {
-        static::saved(function ($attendance) {
-            $user = $attendance->user;
-            if (!$user) return;
-
-            $companyId = $attendance->company_id ?? $user->company_id ?? 1;
-            $month = Carbon::parse($attendance->date)->startOfMonth();
-
-            // ✅ 月内すべての勤怠データを取得
-            $records = DB::table('attendance')
-                ->where('user_id', $user->id)
-                ->whereMonth('date', $month->month)
-                ->whereYear('date', $month->year)
-                ->whereNotNull('clock_in')
-                ->whereNotNull('clock_out')
-                ->get();
-
-            $totalPay = 0;
-            $totalMinutes = 0;
-
-            foreach ($records as $record) {
-                $in = Carbon::parse($record->clock_in);
-                $out = Carbon::parse($record->clock_out);
-
-                // 🔸 勤務時間が正しく計算できるようにする（同日内のみ想定）
-                if ($out->lt($in)) {
-                    // 同日のみにするためスキップ
-                    continue;
-                }
-
-                $hourlyWage = \App\Models\Payroll::where('user_id', $user->id)
-                    ->orderByDesc('month')
-                    ->value('hourly_wage') ?? $user->hourly_wage ?? 1000;
-
-                // ✅ 分単位でのループ計算（22:00～5:00は1.25倍）
-                $current = $in->copy();
-                while ($current->lt($out)) {
-                    $next = $current->copy()->addMinute();
-                    $hour = $current->format('H');
-
-                    // 深夜時間帯（22:00～翌5:00）は1.25倍
-                    if ((int)$hour >= 22 || (int)$hour < 5) {
-                        $totalPay += ($hourlyWage / 60) * 1.25; // 1分あたり
-                    } else {
-                        $totalPay += ($hourlyWage / 60);
-                    }
-
-                    $totalMinutes++;
-                    $current = $next;
-                }
-            }
-
-            $totalHours = round($totalMinutes / 60, 2);
-
-            \App\Models\Payroll::updateOrCreate(
-                [
-                    'user_id' => $user->id,
-                    'month' => $month->toDateString(),
-                ],
-                [
-                    'company_id' => $companyId,
-                    'attendance_id' => $attendance->id,
-                    'total_hours' => $totalHours,
-                    'total_pay' => round($totalPay),
-                    'hourly_wage' => $user->hourly_wage ?? 1000,
-                ]
-            );
-=======
     // =========================
-    // アクセサ：WageHistory から日付に応じた時給を取得
+    // アクセサ：WageHistory から時給取得
     // =========================
     public function getEffectiveWageAttribute()
     {
@@ -120,61 +50,160 @@ class Attendance extends Model
     }
 
     // =========================
-    // アクセサ：勤務時間と時給から給与を計算
+    // アクセサ：深夜手当込みの給与計算
     // =========================
     public function getPayAttribute()
     {
-        if ($this->clock_in && $this->clock_out) {
-            $hours = Carbon::parse($this->clock_in)
-                ->diffInMinutes(Carbon::parse($this->clock_out)) / 60;
-
-            return $hours * $this->effective_wage;
+        if (!$this->clock_in || !$this->clock_out) {
+            return 0;
         }
-        return 0;
+
+        $clockIn = Carbon::parse($this->date . ' ' . $this->clock_in);
+        $clockOut = Carbon::parse($this->date . ' ' . $this->clock_out);
+
+        if ($clockOut->lessThanOrEqualTo($clockIn)) {
+            $clockOut->addDay(); // 日跨ぎ対応
+        }
+
+        $totalMinutes = $clockIn->diffInMinutes($clockOut);
+        $nightPayMinutes = 0;
+        $current = $clockIn->copy();
+
+        // 深夜時間帯（22:00〜翌5:00）
+        while ($current->lt($clockOut)) {
+            $hour = (int)$current->format('H');
+            if ($hour >= 22 || $hour < 5) {
+                $nightPayMinutes++;
+            }
+            $current->addMinute();
+        }
+
+        $normalMinutes = $totalMinutes - $nightPayMinutes;
+        $hourlyWage = $this->effective_wage;
+        $normalPay = ($normalMinutes / 60) * $hourlyWage;
+        $nightPay = ($nightPayMinutes / 60) * $hourlyWage * 1.25; // 深夜25%
+
+        return round($normalPay + $nightPay);
     }
 
     // =========================
-    // モデルイベント：保存後に Payroll を作成（既存は上書きしない）
+    // 出勤・退勤表示フォーマット
+    // =========================
+    public function getDisplayClockInAttribute()
+    {
+        return $this->clock_in ? Carbon::parse($this->clock_in)->format('H:i') : null;
+    }
+
+    public function getDisplayClockOutAttribute()
+    {
+        if (!$this->clock_out) return null;
+
+        $clockIn = Carbon::parse($this->clock_in);
+        $clockOut = Carbon::parse($this->clock_out);
+        if ($clockOut->lessThanOrEqualTo($clockIn)) $clockOut->addDay();
+
+        $hours = $clockOut->diffInHours($clockIn);
+        $minutes = $clockOut->minute;
+
+        $displayHour = $clockOut->hour;
+        if ($hours >= 1 && $displayHour < $clockIn->hour) {
+            $displayHour += 24;
+        }
+
+        return sprintf('%02d:%02d', $displayHour, $minutes);
+    }
+
+    // =========================
+    // モデルイベント：Payroll 再計算
     // =========================
     protected static function booted()
     {
         static::saved(function ($attendance) {
-            $user = $attendance->user;
-            if (!$user) return;
-
-            $companyId = $attendance->company_id ?? $user->company_id ?? 1;
-            $month = Carbon::parse($attendance->date)->startOfMonth();
-
-            // 勤務時間の合計
-            $totalHours = DB::table('attendance')
-                ->where('user_id', $user->id)
-                ->whereMonth('date', $month->month)
-                ->whereYear('date', $month->year)
-                ->whereNotNull('clock_in')
-                ->whereNotNull('clock_out')
-                ->get()
-                ->sum(function ($record) {
-                    return Carbon::parse($record->clock_in)
-                        ->diffInHours(Carbon::parse($record->clock_out));
-                });
-
-            // 既存 Payroll があるかチェック
-            $existingPayroll = \App\Models\Payroll::where('user_id', $user->id)
-                ->where('month', $month->toDateString())
-                ->first();
-
-            if (!$existingPayroll) {
-                // まだ Payroll がなければ作成
-                \App\Models\Payroll::create([
-                    'user_id' => $user->id,
-                    'company_id' => $companyId,
-                    'month' => $month->toDateString(),
-                    'total_hours' => $totalHours,
-                    'hourly_wage' => $attendance->hourly_wage, // Attendance に保存済み時給
-                    'total_pay' => $totalHours * $attendance->hourly_wage,
-                ]);
-            }
->>>>>>> 25fddf929f22fc2de6050cc34b8dcfc8535b4094
+            self::recalculatePayroll($attendance);
         });
+
+        static::deleted(function ($attendance) {
+            self::recalculatePayroll($attendance);
+        });
+    }
+
+    /**
+     * Payroll 再計算処理（削除後エラー対策済み）
+     */
+    protected static function recalculatePayroll($attendance)
+    {
+        if (!$attendance->user_id || !$attendance->date) return;
+
+        $user = $attendance->user ?? \App\Models\User::find($attendance->user_id);
+        if (!$user) return;
+
+        $companyId = $attendance->company_id ?? $user->company_id ?? 1;
+        $month = Carbon::parse($attendance->date)->startOfMonth();
+
+        $records = self::where('user_id', $user->id)
+            ->whereMonth('date', $month->month)
+            ->whereYear('date', $month->year)
+            ->whereNotNull('clock_in')
+            ->whereNotNull('clock_out')
+            ->get();
+
+        $existingPayroll = \App\Models\Payroll::where('user_id', $user->id)
+            ->where('month', $month->toDateString())
+            ->first();
+
+        // 勤怠が全くない場合 → 給与データ削除
+        if ($records->isEmpty()) {
+            if ($existingPayroll) {
+                $existingPayroll->delete();
+            }
+            return;
+        }
+
+        $totalHours = 0;
+        $totalPay = 0;
+        $hourlyWage = 0;
+
+        foreach ($records as $record) {
+            $clockIn = Carbon::parse($record->date . ' ' . $record->clock_in);
+            $clockOut = Carbon::parse($record->date . ' ' . $record->clock_out);
+            if ($clockOut->lessThanOrEqualTo($clockIn)) $clockOut->addDay();
+
+            $totalMinutes = $clockIn->diffInMinutes($clockOut);
+            $nightMinutes = 0;
+
+            // 深夜時間帯（22:00〜翌5:00）
+            $current = $clockIn->copy();
+            while ($current->lt($clockOut)) {
+                $hour = (int)$current->format('H');
+                if ($hour >= 22 || $hour < 5) $nightMinutes++;
+                $current->addMinute();
+            }
+
+            $hourlyWage = $record->effective_wage ?? $record->hourly_wage ?? 0;
+            $normalPay = (($totalMinutes - $nightMinutes) / 60) * $hourlyWage;
+            $nightPay = ($nightMinutes / 60) * $hourlyWage * 1.25;
+
+            $totalHours += $totalMinutes / 60;
+            $totalPay += $normalPay + $nightPay;
+        }
+
+        if ($existingPayroll) {
+            $existingPayroll->update([
+                'total_hours' => round($totalHours, 2),
+                'total_pay' => round($totalPay),
+                'hourly_wage' => $hourlyWage,
+                'company_id' => $companyId,
+            ]);
+        } else {
+            // 勤怠が存在する場合のみ作成（attendance_idは不要）
+            \App\Models\Payroll::create([
+                'user_id' => $user->id,
+                'company_id' => $companyId,
+                'month' => $month->toDateString(),
+                'total_hours' => round($totalHours, 2),
+                'hourly_wage' => $hourlyWage,
+                'total_pay' => round($totalPay),
+            ]);
+        }
     }
 }

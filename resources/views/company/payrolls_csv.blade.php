@@ -16,8 +16,10 @@
         padding: 4px;
         text-align: left;
     }
-</style>
-
+    h2 {
+        margin-bottom: 16px;
+    }
+    </style>
 </head>
 <body>
     <h2>{{ $company->name }} - {{ \Carbon\Carbon::parse($month.'-01')->format('Y年m月') }} 給与一覧</h2>
@@ -35,12 +37,49 @@
             </tr>
         </thead>
         <tbody>
+            @php $totalPay = 0; @endphp
+
             @foreach($attendances as $attendance)
                 @php
-                    $hours = \Carbon\Carbon::parse($attendance->clock_in)
-                             ->diffInMinutes($attendance->clock_out) / 60;
-                    $pay = $hours * $hourlyWage;
+                    $clockIn = \Carbon\Carbon::parse($attendance->date . ' ' . $attendance->clock_in);
+                    $clockOut = \Carbon\Carbon::parse($attendance->date . ' ' . $attendance->clock_out);
+
+                    // 翌日退勤対応
+                    if ($clockOut->lessThanOrEqualTo($clockIn)) {
+                        $clockOut->addDay();
+                    }
+
+                    // 深夜時間帯（22:00〜翌5:00）
+                    $nightStart = \Carbon\Carbon::parse($attendance->date . ' 22:00');
+                    $nightEnd = \Carbon\Carbon::parse($attendance->date . ' 05:00')->addDay();
+
+                    // 深夜労働時間を算出
+                    $overlapStart = $clockIn->greaterThan($nightStart) ? $clockIn : $nightStart;
+                    $overlapEnd = $clockOut->lessThan($nightEnd) ? $clockOut : $nightEnd;
+                    $nightMinutes = $overlapEnd->gt($overlapStart)
+                        ? $overlapStart->diffInMinutes($overlapEnd)
+                        : 0;
+
+                    $totalMinutes = $clockIn->diffInMinutes($clockOut);
+                    $normalMinutes = max(0, $totalMinutes - $nightMinutes);
+
+                    // 時給（履歴 or 現在時給）
+                    $wageHistory = \App\Models\WageHistory::where('user_id', $attendance->user_id)
+                        ->where('effective_from', '<=', $attendance->date)
+                        ->orderByDesc('effective_from')
+                        ->first();
+
+                    $hourlyWage = $wageHistory ? $wageHistory->hourly_wage : ($attendance->user->hourly_wage ?? 0);
+
+                    // 給与計算（深夜割増1.25倍）
+                    $normalPay = ($normalMinutes / 60) * $hourlyWage;
+                    $nightPay = ($nightMinutes / 60) * $hourlyWage * 1.25;
+                    $pay = round($normalPay + $nightPay);
+
+                    $totalPay += $pay;
+                    $hours = round($totalMinutes / 60, 2);
                 @endphp
+
                 <tr>
                     <td>{{ $attendance->user->name }}</td>
                     <td>{{ $attendance->date }}</td>
@@ -53,13 +92,6 @@
             @endforeach
         </tbody>
     </table>
-
-    @php
-        $totalPay = $attendances->sum(function($a) use ($hourlyWage) {
-            return \Carbon\Carbon::parse($a->clock_in)
-                   ->diffInMinutes($a->clock_out) / 60 * $hourlyWage;
-        });
-    @endphp
 
     <p style="text-align: right; margin-top: 10px; font-weight: bold;">
         総給与: {{ number_format($totalPay) }} 円
