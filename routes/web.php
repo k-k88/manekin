@@ -98,6 +98,8 @@ Route::post('/shift/save', [ShiftController::class, 'save'])->name('shift.save')
 Route::post('/shift/save-all', [ShiftController::class, 'saveAll'])->name('shift.saveAll');
 
 
+Route::get('/company/{company}/recent-logs', [CompanyController::class, 'recentLogs'])
+    ->name('company.recentLogs');
 
 
    

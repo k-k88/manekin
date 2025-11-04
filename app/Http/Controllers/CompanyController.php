@@ -406,4 +406,43 @@ class CompanyController extends Controller
             ->header('Content-Type', 'text/csv')
             ->header('Content-Disposition', "attachment; filename={$filename}");
     }
+   public function recentLogs(\App\Models\Company $company, Request $request)
+{
+    $date = $request->input('date', now()->toDateString());
+
+    $recent_attendances = \App\Models\Attendance::whereHas('user', function($q) use ($company) {
+            $q->where('company_id', $company->id);
+        })
+        ->whereDate('date', $date)
+        ->with('user')
+        ->orderBy('updated_at', 'desc')
+        ->limit(50)
+        ->get();
+
+    return view('company.partials.recent_logs', compact('recent_attendances'));
+}
+// 💰 時給更新
+// 💰 時給更新
+public function updateWage(Request $request, Company $company, User $employee)
+{
+    // ✅ 所属チェック（他社データ更新防止）
+    if ($employee->company_id !== $company->id) {
+        abort(403, 'この社員はこの会社に所属していません');
+    }
+
+    $request->validate([
+        'hourly_wage' => 'required|integer|min:1',
+    ]);
+
+    // ✅ WageHistory に新しい時給の履歴を追加（これが本来の正しい給与管理）
+    \App\Models\WageHistory::create([
+        'user_id' => $employee->id,
+        'hourly_wage' => $request->hourly_wage,
+        'effective_from' => now()->toDateString(), // ← 今日から適用
+    ]);
+
+    return back()->with('success', '✅ 時給を更新しました（適用開始日: 今日）');
+}
+
+
 }

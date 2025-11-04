@@ -30,17 +30,27 @@
                 <th>所属店舗</th>
                 <th>入社日</th>
                 <th>ステータス</th>
-                <th>時給</th> {{-- ✅ 追加 --}}
+                <th>時給</th>
                 <th>操作</th>
             </tr>
         </thead>
         <tbody>
             @forelse ($employees as $employee)
+                @php
+                    // ✅ 最新の有効時給を取得（WageHistory 優先）
+                    $latestWage = \App\Models\WageHistory::where('user_id', $employee->id)
+                        ->where('effective_from', '<=', now())
+                        ->orderByDesc('effective_from')
+                        ->first()
+                        ->hourly_wage ?? '';
+                @endphp
+
                 <tr>
                     <td>{{ $employee->id }}</td>
                     <td>{{ $employee->name }}</td>
                     <td>{{ $employee->email ?? '-' }}</td>
                     <td>{{ $employee->phone ?? '-' }}</td>
+
                     <td>
                         @if ($employee->role === 'company_admin')
                             <span class="badge bg-danger">管理者</span>
@@ -50,8 +60,10 @@
                             <span class="badge bg-primary">従業員</span>
                         @endif
                     </td>
+
                     <td>{{ $employee->store->name ?? '-' }}</td>
                     <td>{{ $employee->hire_date ?? '-' }}</td>
+
                     <td>
                         @if ($employee->status === 'active')
                             <span class="badge bg-success">在籍中</span>
@@ -60,15 +72,15 @@
                         @endif
                     </td>
 
-                    {{-- ✅ 時給フォーム --}}
+                    {{-- ✅ 時給履歴付きフォーム --}}
                     <td>
                         <form action="{{ route('company.employees.updateWage', ['company' => $company->id, 'employee' => $employee->id]) }}" 
                               method="POST" class="d-flex align-items-center">
                             @csrf
                             @method('PUT')
-                            <input type="number" name="hourly_wage" 
-                                   value="{{ $employee->hourly_wage ?? '' }}" 
-                                   class="form-control form-control-sm me-2 text-end" 
+                            <input type="number" name="hourly_wage"
+                                   value="{{ $latestWage }}"
+                                   class="form-control form-control-sm me-2 text-end"
                                    style="width:90px;" placeholder="円">
                             <button type="submit" class="btn btn-sm btn-outline-primary">更新</button>
                         </form>
