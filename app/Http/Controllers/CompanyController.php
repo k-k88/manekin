@@ -626,6 +626,26 @@ public function destroyAttendance(Company $company, Attendance $attendance)
         ->route('company.attendances', $company->id)
         ->with('success', '勤怠データを削除しました。');
 }
+
+public function update(Request $request, Company $company)
+{
+    $validated = $request->validate([
+        'name' => 'required|string|max:255',
+        'code' => 'required|string|max:50',
+        'cutoff_date' => 'required|integer|min:1|max:31', // 締め日
+    ]);
+
+    $company->update([
+        'name' => $validated['name'],
+        'code' => $validated['code'],
+        'cutoff_date' => $validated['cutoff_date'], // ここ！
+    ]);
+
+    return redirect()
+        ->route('company.settings', $company->id)
+        ->with('success', '会社情報を更新しました');
+}
+
  
  
 }

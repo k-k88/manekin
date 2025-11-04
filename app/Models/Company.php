@@ -14,6 +14,7 @@ class Company extends Model
         'code', // 企業コード
         'address',
         'phone',
+        'closing_day', // ✅ 追加！締め日カラム
     ];
 
     // ✅ 1つの企業は複数のユーザーを持つ
@@ -29,11 +30,10 @@ class Company extends Model
     }
 
     // ✅ 1つの企業はユーザーを通じて複数の勤怠データを持つ
-public function attendances()
-{
-    return $this->hasMany(Attendance::class, 'company_id', 'id');
-}
-
+    public function attendances()
+    {
+        return $this->hasMany(Attendance::class, 'company_id', 'id');
+    }
 
     // ✅ 1つの企業は複数の給与データ（Payroll）を持つ
     public function payrolls()

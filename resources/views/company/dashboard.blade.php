@@ -86,6 +86,18 @@
     </div>
   </div>
 </div>
+
+<div class="mb-3">
+    <label class="form-label">締め日</label>
+    <select name="closing_day" class="form-select">
+        @for($i = 1; $i <= 31; $i++)
+            <option value="{{ $i }}" {{ old('closing_day', $company->closing_day ?? 31) == $i ? 'selected' : '' }}>
+                {{ $i }} 日
+            </option>
+        @endfor
+    </select>
+    <small class="text-muted">※ 月の締め日を設定してください</small>
+</div>
  
 <script>
 document.addEventListener('DOMContentLoaded', function() {
