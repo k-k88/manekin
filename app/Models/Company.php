@@ -29,11 +29,11 @@ class Company extends Model
     }
 
     // ✅ 1つの企業はユーザーを通じて複数の勤怠データを持つ
-    public function attendances()
-    {
-        return $this->hasManyThrough(Attendance::class, User::class);
-    }
-    
+public function attendances()
+{
+    return $this->hasMany(Attendance::class, 'company_id', 'id');
+}
+
 
     // ✅ 1つの企業は複数の給与データ（Payroll）を持つ
     public function payrolls()

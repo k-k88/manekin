@@ -67,7 +67,6 @@ Route::middleware(['auth'])->group(function () {
 
         // 給与
         Route::get('/payrolls', [CompanyController::class, 'payrolls'])->name('payrolls');
-        Route::get('/generate-payroll', [CompanyController::class, 'generatePayroll'])->name('generatePayroll');
         Route::get('/payrolls/pdf', [CompanyController::class, 'payrollsPdf'])->name('payrollsPdf');
         Route::get('/payrolls/csv', [CompanyController::class, 'payrollsCsv'])->name('payrollsCsv');
         Route::get('/payrolls/recalculate', [CompanyController::class, 'recalculatePayroll'])
@@ -101,7 +100,12 @@ Route::post('/shift/save-all', [ShiftController::class, 'saveAll'])->name('shift
 Route::get('/company/{company}/recent-logs', [CompanyController::class, 'recentLogs'])
     ->name('company.recentLogs');
 
+Route::get('/company/{company}/shifts/edit', [ShiftController::class, 'edit'])->name('company.shifts.edit');
+Route::get('/company/{company}/shifts/delete', [ShiftController::class, 'delete'])->name('company.shifts.delete');
 
-   
+Route::prefix('company/{company}')->group(function () {
+    Route::get('/shifts/edit', [ShiftController::class, 'edit'])->name('company.shifts.edit');
+    Route::get('/shifts/delete', [ShiftController::class, 'delete'])->name('company.shifts.delete');
+});
 });
 
