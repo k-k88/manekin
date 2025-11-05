@@ -7,7 +7,7 @@
     {{-- 🔹 ナビボタン --}}
     <div class="mb-3 d-flex gap-2">
         <a href="{{ route('company.dashboard', $company->id) }}" class="btn btn-secondary">← ダッシュボードに戻る</a>
-        <a href="{{ route('company.attendances.create', $company->id) }}" class="btn btn-success">＋勤怠を追加</a>
+        <a href="{{ route('company.createAttendance', $company->id) }}" class="btn btn-success">＋勤怠を追加</a>
     </div>
  
     {{-- 🔹 メッセージ表示 --}}

@@ -3,20 +3,20 @@
 @section('content')
 <div class="container mt-4">
     <h2 class="mb-4">💰 {{ $company->name }} 日別給与一覧</h2>
-
+ 
     <div class="mb-3">
         <a href="{{ route('company.dashboard', ['company' => $company->id]) }}" class="btn btn-secondary">
             ← ダッシュボードに戻る
         </a>
     </div>
-
+ 
     {{-- フラッシュメッセージ --}}
     @if(session('success'))
         <div class="alert alert-success">
             {{ session('success') }}
         </div>
     @endif
-
+ 
     {{-- フィルター --}}
     <form method="GET" class="mb-3 d-flex gap-2 align-items-end flex-wrap">
         <div>
@@ -39,13 +39,13 @@
             <a href="{{ route('company.payrolls', ['company' => $company->id]) }}" class="btn btn-outline-secondary">リセット</a>
         </div>
     </form>
-
+ 
     {{-- CSV出力 --}}
     <a href="{{ route('company.payrollsCsv', ['company' => $company->id, 'month' => request('month')]) }}"
        class="btn btn-info mb-3">
        CSVでダウンロード
     </a>
-
+ 
     {{-- 給与テーブル --}}
     <table class="table table-bordered table-hover align-middle shadow-sm">
         <thead class="table-light">
@@ -77,7 +77,7 @@
             @endforelse
         </tbody>
     </table>
-
+ 
     {{-- 総給与 --}}
     @if($attendances->count())
         @php

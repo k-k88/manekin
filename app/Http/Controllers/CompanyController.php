@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
 use App\Models\Company;
 use App\Models\User;
 use App\Models\Attendance;
+use App\Models\ShiftRequest;
 use App\Models\Payroll;
 use App\Models\Store;
 use Carbon\Carbon;
@@ -635,21 +636,38 @@ public function destroyAttendance(Company $company, Attendance $attendance)
         ->with('success', '勤怠データを削除しました。');
 }
 
+
+// ✅ 会社情報更新（締め日含む）
 public function update(Request $request, Company $company)
 {
-    $request->validate([
-        'closing_day' => 'required|integer|min:1|max:31',
+    $validated = $request->validate([
+        'name'        => 'nullable|string|max:255',
+        'code'        => 'nullable|string|max:50',
+        'closing_day' => 'required|integer|min:1|max:31',  // 締め日
     ]);
 
     $company->update([
-        'closing_day' => $request->closing_day,
+        'name'        => $validated['name'] ?? $company->name,
+        'code'        => $validated['code'] ?? $company->code,
+        'closing_day' => $validated['closing_day'], // ✅ 統一
     ]);
 
-    return back()->with('success', '締め日を更新しました');
+    return redirect()
+        ->route('company.settings', $company->id)
+        ->with('success', '会社情報を更新しました');
 }
 
+// ✅ シフト申請一覧（必要だった分もそのまま残す）
+public function shiftRequests(Company $company)
+{
+    $requests = ShiftRequest::whereHas('user', function($query) use ($company) {
+            $query->where('company_id', $company->id);
+        })
+        ->where('status', 'pending')
+        ->with('user')
+        ->orderBy('shift_date')
+        ->get();
 
- 
- 
+    return view('company.shift.requests', compact('company', 'requests'));
 }
- 
+}

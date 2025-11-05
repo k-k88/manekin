@@ -1,6 +1,6 @@
 {{-- resources/views/company/dashboard.blade.php --}}
 @extends('layouts.app')
- 
+
 @section('content')
 <div class="container mt-4">
     <h2 class="mb-4">🏢 {{ $company->name }} 管理ダッシュボード</h2>
@@ -8,9 +8,9 @@
     @if(session('success'))
         <div class="alert alert-success">{{ session('success') }}</div>
     @endif
- 
+
     <div class="row">
-        <!-- 勤怠集計 -->
+        <!-- 本日の出勤数 -->
         <div class="col-md-4 mb-3">
             <div class="card shadow-sm">
                 <div class="card-body">
@@ -19,7 +19,7 @@
                 </div>
             </div>
         </div>
- 
+
         <!-- 登録社員数 -->
         <div class="col-md-4 mb-3">
             <div class="card shadow-sm">
@@ -29,7 +29,7 @@
                 </div>
             </div>
         </div>
- 
+
         <!-- 店舗数 -->
         <div class="col-md-4 mb-3">
             <div class="card shadow-sm">
@@ -40,7 +40,7 @@
             </div>
         </div>
     </div>
- 
+
     <hr>
 
     {{-- ✅ 締め日設定フォーム --}}
@@ -63,48 +63,51 @@
         </div>
     </form>
 
- 
     <h4 class="mt-4 mb-3">🕓 出退勤履歴（📅 日付指定 & 🔁 自動更新）</h4>
- 
-    <!-- 📅 日付選択＋更新ボタン -->
+
     <div class="d-flex align-items-center mb-3 gap-2">
         <input type="date" id="attendance-date" class="form-control w-auto"
             value="{{ \Carbon\Carbon::today()->format('Y-m-d') }}">
         <button id="load-logs" class="btn btn-outline-primary">📅 表示</button>
     </div>
- 
-    <!-- 出退勤ログ表示エリア -->
+
     <div style="max-height: 200px; overflow-y: auto;" class="card shadow-sm" id="attendance-log">
         @include('company.partials.recent_logs')
     </div>
- 
+
     <div class="text-center mt-4">
         <a href="{{ route('company.employees', $company->id) }}" class="btn btn-primary m-2">👥 社員一覧</a>
         <a href="{{ route('company.attendances', $company->id) }}" class="btn btn-success m-2">🕓 勤怠一覧</a>
         <a href="{{ route('company.payrolls', $company->id) }}" class="btn btn-warning m-2">💰 給与一覧</a>
-        
-        <!-- 🗓️ シフト調整ボタン -->
-        <button type="button" class="btn btn-info m-2" data-bs-toggle="modal" data-bs-target="#shiftModal">
+
+        {{-- ✅ シフト提出状況リンク --}}
+        <a href="{{ route('company.shift.requests', $company->id) }}" class="btn btn-info m-2">
+            📨 シフト提出一覧（承認待ち）
+        </a>
+
+        <!-- 🗓️ シフト調整ボタン（モーダル表示） -->
+        <button type="button" class="btn btn-secondary m-2" data-bs-toggle="modal" data-bs-target="#shiftModal">
             🗓️ シフト調整
         </button>
     </div>
 </div>
- 
+
 <!-- 🗓️ シフト調整モーダル -->
 <div class="modal fade" id="shiftModal" tabindex="-1" aria-labelledby="shiftModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content shadow-lg">
       <div class="modal-header">
         <h5 class="modal-title" id="shiftModalLabel">シフト調整メニュー</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="閉じる"></button>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
+
       <div class="modal-body text-center">
         <p>以下の操作を選択してください。</p>
- 
+
         <a href="{{ route('company.shifts.edit', $company->id) }}" class="btn btn-primary m-2">
-            ✏️ シフト編集
+            ✏️ シフト編集（確定側）
         </a>
- 
+
         <a href="{{ route('company.shifts.delete', $company->id) }}" class="btn btn-danger m-2">
             ❌ シフト削除
         </a>
@@ -112,22 +115,22 @@
     </div>
   </div>
 </div>
- 
+
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const logContainer = document.getElementById('attendance-log');
     const dateInput = document.getElementById('attendance-date');
     const loadButton = document.getElementById('load-logs');
- 
+
     async function fetchLogs() {
         const date = dateInput.value;
         const response = await fetch("{{ route('company.recentLogs', $company->id) }}?date=" + date);
         const html = await response.text();
         logContainer.innerHTML = html;
     }
- 
+
     loadButton.addEventListener('click', fetchLogs);
-    setInterval(fetchLogs, 30000);
+    setInterval(fetchLogs, 30000); // 30秒ごと自動更新
 });
 </script>
 @endsection
