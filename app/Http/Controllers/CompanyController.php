@@ -635,7 +635,6 @@ public function destroyAttendance(Company $company, Attendance $attendance)
         ->route('company.attendances', $company->id)
         ->with('success', '勤怠データを削除しました。');
 }
-<<<<<<< HEAD
 
 public function shiftRequests(Company $company)
 {
@@ -650,7 +649,6 @@ public function shiftRequests(Company $company)
     return view('company.shift.requests', compact('company', 'requests'));
 }
 
-=======
  
 public function update(Request $request, Company $company)
 {
@@ -659,7 +657,6 @@ public function update(Request $request, Company $company)
         'code' => 'required|string|max:50',
         'cutoff_date' => 'required|integer|min:1|max:31', // 締め日
     ]);
->>>>>>> fdffdc17c4b3c3588bf83ece1e281c6970e02340
  
     $company->update([
         'name' => $validated['name'],

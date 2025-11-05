@@ -44,7 +44,13 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/attendances', [CompanyController::class, 'attendances'])->name('attendances');
         Route::put('/attendances/{attendance}', [CompanyController::class, 'updateAttendance'])->name('attendances.update');
         Route::delete('/attendances/{attendance}', [CompanyController::class, 'destroyAttendance'])->name('attendances.destroy');
-  Route::get('/recent-logs', [CompanyController::class, 'recentLogs'])->name('recentLogs');
+        Route::get('/recent-logs', [CompanyController::class, 'recentLogs'])->name('recentLogs');
+            // ✅ 勤怠追加フォーム
+        Route::get('/attendances/create', [CompanyController::class, 'createAttendance'])->name('attendances.create');
+
+    // ✅ 勤怠登録処理
+    Route::post('/attendances', [CompanyController::class, 'storeAttendance'])->name('attendances.store');
+
         // 社員
         Route::get('/employees', [CompanyController::class, 'employees'])->name('employees');
         Route::get('/employees/create', [CompanyController::class, 'createEmployee'])->name('employees.create');

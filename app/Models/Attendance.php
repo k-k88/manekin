@@ -77,10 +77,6 @@ class Attendance extends Model
 
         return round($normalPay + $nightPay);
     }
-<<<<<<< HEAD
-}
-=======
- 
     // =========================
     // 出勤・退勤表示フォーマット
     // =========================
@@ -194,4 +190,3 @@ class Attendance extends Model
         }
     }
 }
->>>>>>> fdffdc17c4b3c3588bf83ece1e281c6970e02340
