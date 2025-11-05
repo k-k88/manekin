@@ -13,7 +13,6 @@ use App\Models\Store;
 use Carbon\Carbon;
 use Barryvdh\DomPDF\Facade\Pdf;
 use App\Models\WageHistory;
- 
 class CompanyController extends Controller
 {
     // ======================
@@ -492,19 +491,31 @@ public function storeAttendance(Request $request, Company $company)
     $clockIn = $validated['clock_in'];
     $clockOut = $validated['clock_out'];
  
-    // 🔸 時刻文字列をCarbonに変換する関数（日跨ぎ対応）
+    // 🔸 同じ日・同じユーザーの勤怠が既に存在するかチェック
+    $exists = \App\Models\Attendance::where('user_id', $validated['user_id'])
+        ->where('date', $date)
+        ->exists();
+ 
+    if ($exists) {
+        return redirect()
+            ->back()
+            ->withInput()
+            ->with('error', 'この社員はすでに出勤しています。');
+    }
+ 
+    // 🔸 時刻文字列をCarbonに変換（日跨ぎ対応）
     $parseTime = function ($baseDate, $time) {
         if (!$time) return null;
  
         [$hour, $minute] = explode(':', $time);
  
-        // 24時以上なら翌日扱いにして補正
+        // 24時以上なら翌日扱いに補正
         if ((int)$hour >= 24) {
             $hour -= 24;
-            return Carbon::parse($baseDate)->addDay()->setTime($hour, (int)$minute);
+            return \Carbon\Carbon::parse($baseDate)->addDay()->setTime($hour, (int)$minute);
         }
  
-        return Carbon::parse($baseDate)->setTime((int)$hour, (int)$minute);
+        return \Carbon\Carbon::parse($baseDate)->setTime((int)$hour, (int)$minute);
     };
  
     $clockInCarbon = $parseTime($date, $clockIn);
@@ -515,17 +526,18 @@ public function storeAttendance(Request $request, Company $company)
         $clockOutCarbon->addDay();
     }
  
-    // 🔸 時給計算用の履歴取得
-    $wageHistory = WageHistory::where('user_id', $validated['user_id'])
+    // 🔸 時給を取得（履歴優先）
+    $wageHistory = \App\Models\WageHistory::where('user_id', $validated['user_id'])
         ->where('effective_from', '<=', $date)
         ->orderByDesc('effective_from')
         ->first();
  
     $hourlyWage = $wageHistory
         ? $wageHistory->hourly_wage
-        : User::find($validated['user_id'])->hourly_wage;
+        : \App\Models\User::find($validated['user_id'])->hourly_wage;
  
-    Attendance::create([
+    // 🔸 勤怠データを登録
+    \App\Models\Attendance::create([
         'user_id' => $validated['user_id'],
         'company_id' => $company->id,
         'date' => $date,
@@ -534,9 +546,11 @@ public function storeAttendance(Request $request, Company $company)
         'hourly_wage' => $hourlyWage,
     ]);
  
-    return redirect()->route('company.attendances', ['company' => $company->id])
+    return redirect()
+        ->route('company.attendances', ['company' => $company->id])
         ->with('success', '勤怠を追加しました。');
 }
+ 
  
  
     // 給与再計算（今月）
@@ -623,22 +637,17 @@ public function destroyAttendance(Company $company, Attendance $attendance)
 
 public function update(Request $request, Company $company)
 {
-    $validated = $request->validate([
-        'name' => 'required|string|max:255',
-        'code' => 'required|string|max:50',
-        'cutoff_date' => 'required|integer|min:1|max:31', // 締め日
+    $request->validate([
+        'closing_day' => 'required|integer|min:1|max:31',
     ]);
 
     $company->update([
-        'name' => $validated['name'],
-        'code' => $validated['code'],
-        'cutoff_date' => $validated['cutoff_date'], // ここ！
+        'closing_day' => $request->closing_day,
     ]);
 
-    return redirect()
-        ->route('company.settings', $company->id)
-        ->with('success', '会社情報を更新しました');
+    return back()->with('success', '締め日を更新しました');
 }
+
 
  
  

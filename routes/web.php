@@ -96,6 +96,9 @@ Route::post('/shift/save', [ShiftController::class, 'save'])->name('shift.save')
 // シフトまとめ保存
 Route::post('/shift/save-all', [ShiftController::class, 'saveAll'])->name('shift.saveAll');
 
+Route::put('/companies/{company}', [CompanyController::class, 'update'])->name('companies.update');
+
+
 
 Route::get('/company/{company}/recent-logs', [CompanyController::class, 'recentLogs'])
     ->name('company.recentLogs');

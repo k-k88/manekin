@@ -4,7 +4,19 @@
 <div class="container mt-4">
     <h2 class="mb-4">🕓 {{ $company->name }} - 勤怠追加</h2>
  
-    {{-- 🔻 バリデーションエラー表示 --}}
+    {{-- ✅ メッセージ表示ブロック --}}
+    @if (session('error'))
+        <div class="alert alert-danger">
+            {{ session('error') }}
+        </div>
+    @endif
+ 
+    @if (session('success'))
+        <div class="alert alert-success">
+            {{ session('success') }}
+        </div>
+    @endif
+ 
     @if ($errors->any())
         <div class="alert alert-danger">
             <ul class="mb-0">
@@ -14,7 +26,7 @@
             </ul>
         </div>
     @endif
-    {{-- 🔺 ここまで追加 --}}
+    {{-- ✅ ここまで追加 --}}
  
     <form action="{{ route('company.attendances.store', $company->id) }}" method="POST" class="w-50 mx-auto">
         @csrf

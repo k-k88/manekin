@@ -4,6 +4,10 @@
 @section('content')
 <div class="container mt-4">
     <h2 class="mb-4">🏢 {{ $company->name }} 管理ダッシュボード</h2>
+
+    @if(session('success'))
+        <div class="alert alert-success">{{ session('success') }}</div>
+    @endif
  
     <div class="row">
         <!-- 勤怠集計 -->
@@ -38,6 +42,27 @@
     </div>
  
     <hr>
+
+    {{-- ✅ 締め日設定フォーム --}}
+    <h4 class="mt-4">🔧 締め日設定</h4>
+
+    <form action="{{ route('companies.update', $company->id) }}" method="POST" class="mb-4">
+        @csrf
+        @method('PUT')
+
+        <div class="d-flex align-items-center gap-2" style="max-width: 200px;">
+            <select name="closing_day" class="form-select">
+                @for ($i = 1; $i <= 31; $i++)
+                    <option value="{{ $i }}" {{ $company->closing_day == $i ? 'selected' : '' }}>
+                        {{ $i }}日
+                    </option>
+                @endfor
+            </select>
+
+            <button type="submit" class="btn btn-primary">更新</button>
+        </div>
+    </form>
+
  
     <h4 class="mt-4 mb-3">🕓 出退勤履歴（📅 日付指定 & 🔁 自動更新）</h4>
  
@@ -57,10 +82,11 @@
         <a href="{{ route('company.employees', $company->id) }}" class="btn btn-primary m-2">👥 社員一覧</a>
         <a href="{{ route('company.attendances', $company->id) }}" class="btn btn-success m-2">🕓 勤怠一覧</a>
         <a href="{{ route('company.payrolls', $company->id) }}" class="btn btn-warning m-2">💰 給与一覧</a>
-           <!-- 🗓️ シフト調整ボタン（モーダルを開く） -->
-    <button type="button" class="btn btn-info m-2" data-bs-toggle="modal" data-bs-target="#shiftModal">
-        🗓️ シフト調整
-    </button>
+        
+        <!-- 🗓️ シフト調整ボタン -->
+        <button type="button" class="btn btn-info m-2" data-bs-toggle="modal" data-bs-target="#shiftModal">
+            🗓️ シフト調整
+        </button>
     </div>
 </div>
  
@@ -86,18 +112,6 @@
     </div>
   </div>
 </div>
-
-<div class="mb-3">
-    <label class="form-label">締め日</label>
-    <select name="closing_day" class="form-select">
-        @for($i = 1; $i <= 31; $i++)
-            <option value="{{ $i }}" {{ old('closing_day', $company->closing_day ?? 31) == $i ? 'selected' : '' }}>
-                {{ $i }} 日
-            </option>
-        @endfor
-    </select>
-    <small class="text-muted">※ 月の締め日を設定してください</small>
-</div>
  
 <script>
 document.addEventListener('DOMContentLoaded', function() {
@@ -112,13 +126,8 @@ document.addEventListener('DOMContentLoaded', function() {
         logContainer.innerHTML = html;
     }
  
-    // ✅ ボタンクリックで更新
     loadButton.addEventListener('click', fetchLogs);
- 
-    // ✅ 30秒ごとに自動更新
     setInterval(fetchLogs, 30000);
 });
 </script>
 @endsection
- 
- 
