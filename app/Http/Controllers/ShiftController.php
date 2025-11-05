@@ -5,7 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Carbon\Carbon;
-use \Illuminate\Support\Facades\Facades;
+
 use App\Models\User;
 use App\Models\Shift;
 use App\Models\ShiftRequest;
