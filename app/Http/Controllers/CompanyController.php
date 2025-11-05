@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
 use App\Models\Company;
 use App\Models\User;
 use App\Models\Attendance;
+use App\Models\ShiftRequest;
 use App\Models\Payroll;
 use App\Models\Store;
 use Carbon\Carbon;
@@ -620,7 +621,20 @@ public function destroyAttendance(Company $company, Attendance $attendance)
         ->route('company.attendances', $company->id)
         ->with('success', '勤怠データを削除しました。');
 }
- 
+
+public function shiftRequests(Company $company)
+{
+    $requests = ShiftRequest::whereHas('user', function($query) use ($company) {
+            $query->where('company_id', $company->id);
+        })
+        ->where('status', 'pending')
+        ->with('user')
+        ->orderBy('shift_date')
+        ->get();
+
+    return view('company.shift.requests', compact('company', 'requests'));
+}
+
  
 }
  
