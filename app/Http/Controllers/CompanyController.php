@@ -670,4 +670,6 @@ public function shiftRequests(Company $company)
 
     return view('company.shift.requests', compact('company', 'requests'));
 }
+
+ 
 }
