@@ -4,6 +4,9 @@
 <div class="container">
     <h3 class="mb-3 text-center">📅 {{ $user->name }} さんのシフト登録</h3>
 
+    {{-- 🆕 この hidden を追加 --}}
+    <input type="hidden" id="shift_user_id" value="{{ $user->id }}">
+
     @php
         $current = \Carbon\Carbon::create($year, $month, 1);
         $prev = $current->copy()->subMonth();
@@ -42,7 +45,7 @@
                         <td class="shift-day p-2" data-date="{{ $dateStr }}">
                             <strong>{{ $day }}</strong>
 
-                            {{-- ✅② 提出中（青 / 最優先表示） --}}
+                            {{-- ✅ 提出中（青） --}}
                             @if($requestShift)
                                 @if($requestShift->is_day_off)
                                     <div class="text-primary fw-semibold small">❌ 希望休 (提出中)</div>
@@ -54,7 +57,7 @@
                                     </div>
                                 @endif
 
-                            {{-- ✅① 確定（緑） --}}
+                            {{-- ✅ 確定済（緑） --}}
                             @elseif($confirmedShift)
                                 @if($confirmedShift->is_day_off)
                                     <div class="text-danger fw-bold small">❌ 希望休</div>
@@ -79,7 +82,7 @@
     <button id="saveAllBtn" class="btn btn-primary w-100 my-3">💾 この月のシフトを提出する</button>
 </div>
 
-<!-- 🟨 入力モーダル -->
+<!-- シフト入力モーダル -->
 <div class="modal fade" id="shiftModal" tabindex="-1">
     <div class="modal-dialog">
         <form id="shiftForm" class="modal-content">
@@ -114,19 +117,17 @@ document.addEventListener('DOMContentLoaded', function () {
 
     let shiftData = JSON.parse(localStorage.getItem('shiftDrafts') || '{}');
 
-    // 🟨 下書きをカレンダーに反映（提出中/確定の上書きなし）
+    // 🟨 下書き反映
     for (const date in shiftData) {
-        const cell = document.querySelector(`td.shift-day[data-date="${date}"]`);
+        const cell = document.querySelector(`td[data-date="${date}"]`);
         if (!cell) continue;
-
-        if (cell.innerHTML.includes('(提出中)') || cell.innerHTML.includes('text-success')) continue;
-
         const s = shiftData[date];
         cell.innerHTML += s.is_day_off
             ? `<div class="text-warning fw-semibold small">❌ 希望休 (下書き)</div>`
             : `<div class="text-warning small fw-semibold">${s.start_time}〜${s.end_time} (下書き)</div>`;
     }
 
+    // 🟨 日クリック → モーダル
     document.querySelectorAll('.shift-day').forEach(cell => {
         cell.addEventListener('click', () => {
             const date = cell.dataset.date;
@@ -143,25 +144,28 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
+    // 🟨 一時保存
     document.getElementById('shiftForm').addEventListener('submit', e => {
         e.preventDefault();
         const date = document.getElementById('shift_date').value;
-
         shiftData[date] = {
             is_day_off: document.getElementById('is_day_off').checked,
             start_time: document.getElementById('start_time').value,
             end_time: document.getElementById('end_time').value
         };
-
         localStorage.setItem('shiftDrafts', JSON.stringify(shiftData));
         location.reload();
     });
 
+    // ✅ 月提出（ここ修正済）
     document.getElementById('saveAllBtn').addEventListener('click', function () {
         fetch("{{ route('shift.saveAll') }}", {
             method: "POST",
             headers: {'Content-Type': 'application/json','X-CSRF-TOKEN': '{{ csrf_token() }}'},
-            body: JSON.stringify({ shifts: shiftData })
+            body: JSON.stringify({
+                user_id: document.getElementById('shift_user_id').value, // ← ✅ ココが重要
+                shifts: shiftData
+            })
         })
         .then(r => r.json())
         .then(r => {

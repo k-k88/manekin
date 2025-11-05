@@ -69,7 +69,7 @@ class ShiftController extends Controller
             };
 
             ShiftRequest::updateOrCreate(
-                ['user_id' => Auth::id(), 'shift_date' => $date],
+                ['user_id' => $request->user_id, 'shift_date' => $date],
                 [
                     'is_day_off' => $isDayOff,
                     'start_time' => $isDayOff ? null : $normalize($date, $request->start_time),
@@ -88,43 +88,45 @@ class ShiftController extends Controller
     }
 
 
-    // ✅ 月まとめて提出
-    public function saveAll(Request $request)
-    {
-        try {
-            foreach ($request->shifts as $date => $s) {
+  public function saveAll(Request $request)
+{
+    try {
+        $userId = $request->input('user_id');
 
-                $isDayOff = ($s['is_day_off'] ?? 0) == 1;
+        foreach ($request->shifts as $date => $s) {
 
-                $normalize = function ($date, $time) {
-                    if (!$time) return null;
-                    [$h, $m] = explode(':', $time);
-                    if ($h >= 24) {
-                        $date = date('Y-m-d', strtotime($date . ' +1 day'));
-                        $h -= 24;
-                    }
-                    return $date . ' ' . sprintf('%02d:%02d:00', $h, $m);
-                };
+            $isDayOff = ($s['is_day_off'] ?? 0) == 1;
 
-                ShiftRequest::updateOrCreate(
-                    ['user_id' => auth()->id(), 'shift_date' => $date],
-                    [
-                        'is_day_off' => $isDayOff,
-                        'start_time' => $isDayOff ? null : $normalize($date, $s['start_time']),
-                        'end_time'   => $isDayOff ? null : $normalize($date, $s['end_time']),
-                        'store_id'   => auth()->user()->store_id,
-                        'status'     => 'pending',
-                    ]
-                );
-            }
+            $normalize = function ($date, $time) {
+                if (!$time) return null;
+                [$h, $m] = explode(':', $time);
+                if ($h >= 24) {
+                    $date = date('Y-m-d', strtotime($date . ' +1 day'));
+                    $h -= 24;
+                }
+                return $date . ' ' . sprintf('%02d:%02d:00', $h, $m);
+            };
 
-            return response()->json(['success' => true]);
-
-        } catch (\Throwable $e) {
-            \Log::error('Shift SaveAll Error: '.$e->getMessage());
-            return response()->json(['success' => false], 500);
+            ShiftRequest::updateOrCreate(
+                ['user_id' => $userId, 'shift_date' => $date],
+                [
+                    'is_day_off' => $isDayOff,
+                    'start_time' => $isDayOff ? null : $normalize($date, $s['start_time'] ?? null),
+                    'end_time'   => $isDayOff ? null : $normalize($date, $s['end_time'] ?? null),
+                    'store_id'   => User::find($userId)->store_id,
+                    'status'     => 'pending',
+                ]
+            );
         }
+
+        return response()->json(['success' => true]);
+
+    } catch (\Throwable $e) {
+        \Log::error('Shift SaveAll Error: '.$e->getMessage());
+        return response()->json(['success' => false, 'error' => $e->getMessage()], 500);
     }
+}
+
 
 
     // ✅ 店長側：提出状況一覧
