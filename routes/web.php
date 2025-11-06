@@ -6,14 +6,14 @@ use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\LineWebhookController;
 use App\Http\Controllers\PayrollController;
 use App\Http\Controllers\ShiftController;
+use App\Http\Controllers\EmployeeController;
+use App\Http\Controllers\AttendanceController;
 
 /*
 |--------------------------------------------------------------------------
 | Web Routes
 |--------------------------------------------------------------------------
 */
-Route::get('/shift/login/{line_user_id}', [ShiftController::class, 'loginWithLine'])->name('shift.login');
-
 
 // 🔸 LINE Webhook（CSRF除外）
 Route::post('/line/webhook', [LineWebhookController::class, 'webhook']);
@@ -35,52 +35,64 @@ Route::middleware(['auth'])->group(function () {
 
     /*
     |--------------------------------------------------------------------------
-    | 企業管理（会社ごと）
+    | 企業ごとの管理ルート
     |--------------------------------------------------------------------------
     */
-    Route::prefix('company/{company}')->name('company.')->group(function() {
+    Route::prefix('company/{company}')->name('company.')->group(function () {
 
-        // ダッシュボード
+        // 🏢 ダッシュボード
         Route::get('/dashboard', [CompanyController::class, 'dashboard'])->name('dashboard');
-
-        // 勤怠
-        Route::get('/attendances', [CompanyController::class, 'attendances'])->name('attendances');
-        Route::put('/attendances/{attendance}', [CompanyController::class, 'updateAttendance'])->name('attendances.update');
-        Route::delete('/attendances/{attendance}', [CompanyController::class, 'destroyAttendance'])->name('attendances.destroy');
+        Route::get('/edit', [CompanyController::class, 'edit'])->name('edit');
+        Route::put('/update', [CompanyController::class, 'update'])->name('update');
         Route::get('/recent-logs', [CompanyController::class, 'recentLogs'])->name('recentLogs');
 
-        // 勤怠追加
-        Route::get('/attendances/create', [CompanyController::class, 'createAttendance'])->name('attendances.create');
-        Route::post('/attendances', [CompanyController::class, 'storeAttendance'])->name('attendances.store');
+        /*
+        |--------------------------------------------------------------------------
+        | 👥 社員管理（EmployeeController）
+        |--------------------------------------------------------------------------
+        */
+        Route::get('/employees', [EmployeeController::class, 'employees'])->name('employees');
+        Route::get('/employees/create', [EmployeeController::class, 'createEmployee'])->name('employees.create');
+        Route::post('/employees', [EmployeeController::class, 'storeEmployee'])->name('employees.store');
+        Route::get('/employees/{employee}/edit', [EmployeeController::class, 'editEmployee'])->name('employees.edit');
+        Route::put('/employees/{employee}', [EmployeeController::class, 'updateEmployee'])->name('employees.update');
+        Route::delete('/employees/{employee}', [EmployeeController::class, 'deleteEmployee'])->name('employees.delete');
+        Route::put('/employees/{employee}/wage', [EmployeeController::class, 'updateWage'])->name('employees.wage.update');
+        Route::put('/employees/{employee}/update-wage', [EmployeeController::class, 'updateWage'])->name('employees.updateWage');
 
-        // 社員管理
-        Route::get('/employees', [CompanyController::class, 'employees'])->name('employees');
-        Route::get('/employees/create', [CompanyController::class, 'createEmployee'])->name('employees.create');
-        Route::post('/employees', [CompanyController::class, 'storeEmployee'])->name('employees.store');
-        Route::get('/employees/{employee}/edit', [CompanyController::class, 'editEmployee'])->name('employees.edit');
-        Route::post('/employees/{employee}', [CompanyController::class, 'updateEmployee'])->name('employees.update');
-        Route::delete('/employees/{employee}', [CompanyController::class, 'deleteEmployee'])->name('employees.delete');
-        Route::put('/employees/{employee}/update-wage', [CompanyController::class, 'updateWage'])
-            ->name('employees.updateWage');
+        /*
+        |--------------------------------------------------------------------------
+        | 🕒 勤怠管理（AttendanceController）
+        |--------------------------------------------------------------------------
+        */
+        Route::get('/attendances', [AttendanceController::class, 'index'])->name('attendances');
+        Route::get('/attendances/create', [AttendanceController::class, 'createAttendance'])->name('attendances.create');
+        Route::post('/attendances', [AttendanceController::class, 'storeAttendance'])->name('attendances.store');
+        Route::get('/attendances/{attendance}/edit', [AttendanceController::class, 'editAttendance'])->name('attendances.edit');
+        Route::put('/attendances/{attendance}', [AttendanceController::class, 'updateAttendance'])->name('attendances.update');
+        Route::delete('/attendances/{attendance}', [AttendanceController::class, 'destroyAttendance'])->name('attendances.destroy');
 
-
-
-        // 給与
-        Route::get('/payrolls', [CompanyController::class, 'payrolls'])->name('payrolls');
-        Route::get('/payrolls/pdf', [CompanyController::class, 'payrollsPdf'])->name('payrollsPdf');
-        Route::get('/payrolls/csv', [CompanyController::class, 'payrollsCsv'])->name('payrollsCsv');
-        Route::get('/payrolls/recalculate', [CompanyController::class, 'recalculatePayroll'])
-            ->name('payrolls.recalculate');
-
-
+        /*
+        |--------------------------------------------------------------------------
+        | 💰 給与管理（PayrollController）
+        |--------------------------------------------------------------------------
+        */
+        Route::get('/payrolls', [PayrollController::class, 'payrolls'])->name('payrolls');
+        Route::get('/payrolls/csv', [PayrollController::class, 'payrollsCsv'])->name('payrollsCsv');
+        Route::get('/payrolls/create', [PayrollController::class, 'createPayroll'])->name('payrolls.create');
+        Route::post('/payrolls', [PayrollController::class, 'storePayroll'])->name('payrolls.store');
+        Route::get('/payrolls/{payroll}/edit', [PayrollController::class, 'editPayroll'])->name('payrolls.edit');
+        Route::put('/payrolls/{payroll}', [PayrollController::class, 'updatePayroll'])->name('payrolls.update');
+        Route::delete('/payrolls/{payroll}', [PayrollController::class, 'destroyPayroll'])->name('payrolls.destroy');
+        Route::post('/payrolls/recalculate', [PayrollController::class, 'recalculate'])->name('payrolls.recalculate');
     });
 
     /*
     |--------------------------------------------------------------------------
-    | 共通給与計算
+    | 共通給与計算（全体向け）
     |--------------------------------------------------------------------------
     */
-    Route::get('/payroll', [PayrollController::class, 'index'])->name('payroll.index');
+    Route::get('/payroll', [PayrollController::class, 'indexGlobal'])->name('payroll.index');
     Route::post('/payroll/calculate', [PayrollController::class, 'calculatePayroll'])->name('payroll.calculate');
 
     /*
@@ -88,24 +100,10 @@ Route::middleware(['auth'])->group(function () {
     | シフト登録・表示（ログイン後）
     |--------------------------------------------------------------------------
     */
- Route::get('/shift/calendar/{user}', [ShiftController::class, 'calendar'])->name('shift.calendar');
-Route::get('/shift/events/{user}', [ShiftController::class, 'events'])->name('shift.events');
-// ✅ シフト登録保存（LINEログイン用）
-Route::post('/shift/save', [ShiftController::class, 'save'])->name('shift.save');
-// まとめて保存
-// シフトまとめ保存
-Route::post('/shift/save-all', [ShiftController::class, 'saveAll'])->name('shift.saveAll');
-
-
-Route::get('/company/{company}/recent-logs', [CompanyController::class, 'recentLogs'])
-    ->name('company.recentLogs');
-
-Route::get('/company/{company}/shifts/edit', [ShiftController::class, 'edit'])->name('company.shifts.edit');
-Route::get('/company/{company}/shifts/delete', [ShiftController::class, 'delete'])->name('company.shifts.delete');
-
-Route::prefix('company/{company}')->group(function () {
-    Route::get('/shifts/edit', [ShiftController::class, 'edit'])->name('company.shifts.edit');
-    Route::get('/shifts/delete', [ShiftController::class, 'delete'])->name('company.shifts.delete');
-});
-});
-
+    Route::get('/shift/calendar/{user}', [ShiftController::class, 'calendar'])->name('shift.calendar');
+    Route::get('/shift/events/{user}', [ShiftController::class, 'events'])->name('shift.events');
+    Route::post('/shift/save', [ShiftController::class, 'save'])->name('shift.save');
+    Route::post('/shift/save-all', [ShiftController::class, 'saveAll'])->name('shift.saveAll');
+    Route::get('/company/{company}/shifts/edit', [ShiftController::class, 'edit'])->name('company.shifts.edit');
+    Route::get('/company/{company}/shifts/delete', [ShiftController::class, 'delete'])->name('company.shifts.delete');
+}); 
