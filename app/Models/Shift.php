@@ -17,6 +17,11 @@ class Shift extends Model
         'end_time',
         'is_day_off', // ← これが必要！
     ];
+    protected $casts = [
+        'shift_date' => 'date',
+        'start_time' => 'datetime:H:i',
+        'end_time'   => 'datetime:H:i',
+    ];
 
     // 🔗 リレーション
     public function user()

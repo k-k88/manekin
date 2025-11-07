@@ -11,14 +11,14 @@ class ShiftRequest extends Model
         'start_time', 'end_time', 'is_day_off', 'status'
     ];
 
-    // ✅ 日付・日時フィールドを Carbon 化
     protected $casts = [
         'shift_date' => 'date',
-        'start_time' => 'datetime',
-        'end_time'   => 'datetime',
+        'start_time' => 'datetime:H:i',
+        'end_time'   => 'datetime:H:i',
         'is_day_off' => 'boolean',
     ];
 
+    // ✅ 関連付け
     public function user()
     {
         return $this->belongsTo(User::class);
