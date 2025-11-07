@@ -62,27 +62,27 @@ class CompanyController extends Controller
      * 🔁 AJAXで最新の勤怠ログを取得
      */
     public function recentLogs(Company $company, Request $request)
-{
-    $user = Auth::user();
+    {
+        $user = Auth::user();
 
-    // アクセス制限
-    if ($user->company_id !== $company->id) {
-        abort(403, 'アクセス権がありません');
+        // アクセス制限
+        if ($user->company_id !== $company->id) {
+            abort(403, 'アクセス権がありません');
+        }
+
+        // 📅 表示したい日付（デフォルトは今日）
+        $date = $request->query('date', now()->toDateString());
+
+        // 🕓 指定日の勤怠ログのみ取得（過去追加分は除外）
+        $recent_attendances = Attendance::where('company_id', $company->id)
+            ->whereDate('date', '=', $date)
+            ->with('user')
+            ->orderBy('clock_in', 'asc')
+            ->take(20)
+            ->get();
+
+        return view('company.partials.recent_logs', compact('recent_attendances', 'date'));
     }
-
-    // 📅 表示したい日付（デフォルトは今日）
-    $date = $request->query('date', now()->toDateString());
-
-    // 🕓 指定日の勤怠ログのみ取得（過去追加分は除外）
-    $recent_attendances = Attendance::where('company_id', $company->id)
-        ->whereDate('date', '=', $date) // ← この日の勤怠だけ
-        ->with('user')
-        ->orderBy('clock_in', 'asc')   // 出勤順
-        ->take(20)
-        ->get();
-
-    return view('company.partials.recent_logs', compact('recent_attendances', 'date'));
-}
 
     /**
      * 会社設定編集画面
@@ -99,7 +99,7 @@ class CompanyController extends Controller
     }
 
     /**
-     * 会社情報更新処理
+     * 会社情報更新処理（締め日も含む）
      */
     public function update(Request $request, Company $company)
     {
@@ -110,9 +110,10 @@ class CompanyController extends Controller
         }
 
         $validated = $request->validate([
-            'name' => 'required|string|max:255',
+            'name' => 'sometimes|string|max:255', // ダッシュボードからはnameが来ない場合もあるため「required」→「sometimes」に
             'address' => 'nullable|string|max:255',
             'phone' => 'nullable|string|max:50',
+            'closing_day' => 'nullable|integer|min:1|max:31', // ← 🔧 締め日追加
         ]);
 
         $company->update($validated);
