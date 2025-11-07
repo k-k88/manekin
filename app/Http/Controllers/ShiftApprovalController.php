@@ -331,42 +331,14 @@ public function getRequestsByDate($companyId, $date)
         ->get()
         ->map(fn($s) => [
             'id'         => $s->id,
-            'user_id'    => $s->user_id,      // ここ必須
+            'user_id'    => $s->user_id,
             'user_name'  => $s->user->name,
             'start_time' => $s->start_time,
             'end_time'   => $s->end_time,
             'is_day_off' => (int) $s->is_day_off,
+            'status'     => $s->status,   // ← ★ これだけ足す
         ]);
+
     return response()->json($requests);
 }
-
-public function show($companyId, $shiftId)
-{
-    $shift = \App\Models\Shift::with('user')->findOrFail($shiftId);
-
-    return response()->json([
-        'id'          => $shift->id,
-        'user_id'     => $shift->user_id,
-        'user_name'   => $shift->user->name ?? '',
-        'shift_date'  => $shift->shift_date,
-        'start_time'  => $shift->start_time,
-        'end_time'    => $shift->end_time,
-        'is_day_off'  => $shift->is_day_off,
-        'status'      => $shift->status,
-    ]);
-}
-
-public function destroy($companyId, $shiftId)
-{
-    $shift = \App\Models\Shift::find($shiftId);
-    if (!$shift) {
-        return response()->json(['success' => false, 'message' => 'シフトが見つかりません。']);
-    }
-
-    $shift->delete();
-
-    return response()->json(['success' => true]);
-}
-
-
 }
