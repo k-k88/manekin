@@ -2,7 +2,7 @@
  
 @section('content')
 <div class="container mt-4">
-    <h2 class="mb-4">💰 {{ $company->name }} 日別給与一覧</h2>
+    <h2 class="mb-4">💰 {{ $company->name }} 給与一覧</h2>
  
     <div class="mb-3">
         <a href="{{ route('company.dashboard', ['company' => $company->id]) }}" class="btn btn-secondary">
