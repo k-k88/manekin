@@ -15,15 +15,17 @@ class Shift extends Model
         'shift_date',
         'start_time',
         'end_time',
-        'is_day_off', // ← これが必要！
+        'is_day_off',
+        'status', // ← ← ← 必須！！！
     ];
+
     protected $casts = [
         'shift_date' => 'date',
         'start_time' => 'datetime:H:i',
         'end_time'   => 'datetime:H:i',
+        'is_day_off' => 'boolean',
     ];
 
-    // 🔗 リレーション
     public function user()
     {
         return $this->belongsTo(User::class);

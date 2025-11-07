@@ -19,10 +19,8 @@ class ShiftController extends Controller
         $user = User::where('line_user_id', $line_user_id)->first();
         if (!$user) return redirect('/')->with('error', 'ユーザーが見つかりません');
         Auth::login($user);
-       return redirect()->route('shift.user.calendar', ['user' => $user->id]);
-
+        return redirect()->route('shift.user.calendar', ['user' => $user->id]);
     }
- 
  
     // ✅ カレンダー表示
     public function calendar(User $user, Request $request)
@@ -35,13 +33,15 @@ class ShiftController extends Controller
  
         // ✅ 確定シフト（緑）
         $confirmed = Shift::where('user_id', $user->id)
-            ->whereBetween('shift_date', [$firstDay, $lastDay])
+            ->whereDate('shift_date', '>=', $firstDay)
+            ->whereDate('shift_date', '<=', $lastDay)
             ->get()
             ->keyBy(fn($s) => $s->shift_date->toDateString());
  
         // ✅ 提出中シフト（青）
         $requests = ShiftRequest::where('user_id', $user->id)
-            ->whereBetween('shift_date', [$firstDay, $lastDay])
+            ->whereDate('shift_date', '>=', $firstDay)
+            ->whereDate('shift_date', '<=', $lastDay)
             ->orderBy('created_at', 'desc')
             ->get()
             ->groupBy(fn($s) => $s->shift_date->toDateString());
@@ -50,7 +50,6 @@ class ShiftController extends Controller
             'user', 'year', 'month', 'firstDay', 'lastDay', 'confirmed', 'requests'
         ));
     }
- 
  
     // ✅ 一時保存（1日分）
     public function save(Request $request)
@@ -62,7 +61,7 @@ class ShiftController extends Controller
             $normalize = function ($date, $time) {
                 if (!$time) return null;
                 [$h, $m] = explode(':', $time);
-                $base = Carbon::parse($date.' 00:00:00');
+                $base = Carbon::parse($date . ' 00:00:00');
                 if ((int)$h >= 24) {
                     $base->addDay();
                     $h -= 24;
@@ -88,49 +87,47 @@ class ShiftController extends Controller
             return response()->json(['success' => false], 422);
         }
     }
-
-
-  public function saveAll(Request $request)
-{
-    try {
-        $userId = $request->input('user_id');
-
-        foreach ($request->shifts as $date => $s) {
-
-            $isDayOff = ($s['is_day_off'] ?? 0) == 1;
-
-            $normalize = function ($date, $time) {
-                if (!$time) return null;
-                [$h, $m] = explode(':', $time);
-                if ($h >= 24) {
-                    $date = date('Y-m-d', strtotime($date . ' +1 day'));
-                    $h -= 24;
-                }
-                return $date . ' ' . sprintf('%02d:%02d:00', $h, $m);
-            };
-
-            ShiftRequest::updateOrCreate(
-                ['user_id' => $userId, 'shift_date' => $date],
-                [
-                    'is_day_off' => $isDayOff,
-                    'start_time' => $isDayOff ? null : $normalize($date, $s['start_time'] ?? null),
-                    'end_time'   => $isDayOff ? null : $normalize($date, $s['end_time'] ?? null),
-                    'store_id'   => User::find($userId)->store_id,
-                    'status'     => 'pending',
-                ]
-            );
+ 
+    // ✅ 一括保存（1ヶ月分）
+    public function saveAll(Request $request)
+    {
+        try {
+            $userId = $request->input('user_id');
+ 
+            foreach ($request->shifts as $date => $s) {
+ 
+                $isDayOff = ($s['is_day_off'] ?? 0) == 1;
+ 
+                $normalize = function ($date, $time) {
+                    if (!$time) return null;
+                    [$h, $m] = explode(':', $time);
+                    if ($h >= 24) {
+                        $date = date('Y-m-d', strtotime($date . ' +1 day'));
+                        $h -= 24;
+                    }
+                    return $date . ' ' . sprintf('%02d:%02d:00', $h, $m);
+                };
+ 
+                ShiftRequest::updateOrCreate(
+                    ['user_id' => $userId, 'shift_date' => $date],
+                    [
+                        'is_day_off' => $isDayOff,
+                        'start_time' => $isDayOff ? null : $normalize($date, $s['start_time'] ?? null),
+                        'end_time'   => $isDayOff ? null : $normalize($date, $s['end_time'] ?? null),
+                        'store_id'   => User::find($userId)->store_id,
+                        'status'     => 'pending',
+                    ]
+                );
+            }
+ 
+            return response()->json(['success' => true]);
+ 
+        } catch (\Throwable $e) {
+            \Log::error('Shift SaveAll Error: '.$e->getMessage());
+            return response()->json(['success' => false, 'error' => $e->getMessage()], 500);
         }
-
-        return response()->json(['success' => true]);
-
-    } catch (\Throwable $e) {
-        \Log::error('Shift SaveAll Error: '.$e->getMessage());
-        return response()->json(['success' => false, 'error' => $e->getMessage()], 500);
     }
-}
-
-
-
+ 
     // ✅ 店長側：提出状況一覧
     public function requests(Company $company)
     {
@@ -145,4 +142,3 @@ class ShiftController extends Controller
         return view('company.shifts.requests', compact('company', 'requests'));
     }
 }
- 

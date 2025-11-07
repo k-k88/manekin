@@ -243,28 +243,33 @@ private function normalizeTime($baseDate, $time)
     }
 
     // カレンダー表示
-    public function calendar(Request $request, Company $company)
-    {
-        $month = $request->input('month', now()->format('Y-m'));
+ // カレンダー表示
+public function calendar(Request $request, Company $company)
+{
+    $month = $request->input('month', now()->format('Y-m'));
 
-        $year = substr($month, 0, 4);
-        $mon  = substr($month, 5, 2);
-        $firstDay = Carbon::create($year, $mon, 1);
-        $lastDay  = $firstDay->copy()->endOfMonth();
+    $year = substr($month, 0, 4);
+    $mon  = substr($month, 5, 2);
+    $firstDay = Carbon::create($year, $mon, 1);
+    $lastDay  = $firstDay->copy()->endOfMonth();
 
-        $start = $firstDay->copy()->startOfWeek(Carbon::SUNDAY);
-        $end   = $lastDay->copy()->endOfWeek(Carbon::SATURDAY);
+    $start = $firstDay->copy()->startOfWeek(Carbon::SUNDAY);
+    $end   = $lastDay->copy()->endOfWeek(Carbon::SATURDAY);
 
-        $confirmed = Shift::whereHas('user', fn($q) => $q->where('company_id', $company->id))
-            ->whereBetween('shift_date', [$start->format('Y-m-d'), $end->format('Y-m-d')])
-            ->with('user')
-            ->get()
-            ->groupBy('shift_date');
+    // ✅ confirmed を日付文字列でグルーピング
+    $confirmed = Shift::whereHas('user', fn($q) => $q->where('company_id', $company->id))
+        ->whereBetween('shift_date', [$start->format('Y-m-d'), $end->format('Y-m-d')])
+        ->with('user')
+        ->get()
+        ->groupBy(function ($shift) {
+            return Carbon::parse($shift->shift_date)->format('Y-m-d');
+        });
 
-        return view('company.shift.calendar', compact(
-            'company', 'confirmed', 'month', 'year', 'mon', 'firstDay', 'lastDay', 'start', 'end'
-        ));
-    }
+    // ✅ これが無かった
+    return view('company.shift.calendar', compact(
+        'company', 'confirmed', 'month', 'year', 'mon', 'firstDay', 'lastDay', 'start', 'end'
+    ));
+}
 
     // カレンダー保存（API用）
     public function calendarSave(Request $request, Company $company)
