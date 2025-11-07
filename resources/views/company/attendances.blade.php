@@ -6,8 +6,14 @@
  
     {{-- 🔹 ナビボタン --}}
     <div class="mb-3 d-flex gap-2">
+        <!-- ダッシュボードに戻るボタン -->
         <a href="{{ route('company.dashboard', $company->id) }}" class="btn btn-secondary">← ダッシュボードに戻る</a>
-        <a href="{{ route('company.createAttendance', $company->id) }}" class="btn btn-success">＋勤怠を追加</a>
+
+        <!-- 勤怠追加ボタン（POST送信） -->
+        <form action="{{ route('company.createAttendance', $company->id) }}" method="POST" class="d-inline">
+            @csrf
+            <button type="submit" class="btn btn-success">＋勤怠を追加</button>
+        </form>
     </div>
  
     {{-- 🔹 メッセージ表示 --}}
@@ -69,10 +75,10 @@
                 @php
                     $clockIn = $attendance->clock_in ? \Carbon\Carbon::parse($attendance->clock_in) : null;
                     $clockOut = $attendance->clock_out ? \Carbon\Carbon::parse($attendance->clock_out) : null;
- 
+
                     $displayClockIn = $clockIn ? $clockIn->format('H:i') : '';
                     $displayClockOut = '';
- 
+
                     if ($attendance->clock_out) {
                         $outHour = (int)substr($attendance->clock_out, 0, 2);
                         $outMin = (int)substr($attendance->clock_out, 3, 2);
@@ -81,11 +87,11 @@
                             : sprintf('%02d:%02d', $outHour, $outMin);
                     }
                 @endphp
- 
+
                 <tr>
                     <td>{{ $attendance->user->name }}</td>
                     <td>{{ $attendance->date }}</td>
- 
+
                     {{-- 🔸 編集フォーム --}}
                     <form action="{{ route('company.attendances.update', ['company' => $company->id, 'attendance' => $attendance->id]) }}" method="POST">
                         @csrf
@@ -96,7 +102,7 @@
                         <td>
                             <input type="text" name="clock_out" class="form-control time-input" value="{{ $displayClockOut }}" placeholder="HH:MM">
                         </td>
- 
+
                         {{-- 🔸 勤務時間計算 --}}
                         <td>
                             @if ($clockIn && $attendance->clock_out)
@@ -104,7 +110,7 @@
                                     $outHourInt = (int)substr($attendance->clock_out, 0, 2);
                                     $outMinuteInt = (int)substr($attendance->clock_out, 3, 2);
                                     $calcOut = $clockIn->copy();
- 
+
                                     if ($outHourInt >= 24) {
                                         $calcOut->addDay()->setTime($outHourInt - 24, $outMinuteInt);
                                     } else {
@@ -113,7 +119,7 @@
                                             $calcOut->addDay();
                                         }
                                     }
- 
+
                                     $hours = $clockIn->diffInMinutes($calcOut) / 60;
                                 @endphp
                                 {{ number_format($hours, 2) }} 時間
@@ -121,7 +127,7 @@
                                 -
                             @endif
                         </td>
- 
+
                         {{-- 🔸 ステータス --}}
                         <td>
                             @if ($attendance->status === 'approved')
@@ -132,12 +138,12 @@
                                 <span class="badge bg-secondary">未申請</span>
                             @endif
                         </td>
- 
+
                         {{-- 🔸 操作ボタン --}}
                         <td class="d-flex gap-1">
                             <button type="submit" class="btn btn-sm btn-primary">更新</button>
                     </form>
- 
+
                             <form action="{{ route('company.attendances.destroy', ['company' => $company->id, 'attendance' => $attendance->id]) }}"
                                   method="POST"
                                   onsubmit="return confirm('この勤怠データを削除しますか？');">
@@ -171,5 +177,3 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 @endsection
- 
- 

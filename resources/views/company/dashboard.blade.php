@@ -104,13 +104,15 @@
       <div class="modal-body text-center">
         <p>以下の操作を選択してください。</p>
 
-        <a href="{{ route('company.shifts.edit', $company->id) }}" class="btn btn-primary m-2">
-            ✏️ シフト編集（確定側）
+        <a href="{{ route('company.shift.calendar.edit', ['company' => $company->id]) }}" class="btn btn-primary m-2">
+        ✏️ シフト編集（確定側）
+            </a>
+
+        <a href="{{ route('company.shift.delete.page', ['company' => $company->id]) }}" class="btn btn-danger m-2">
+        ❌ シフト削除
         </a>
 
-        <a href="{{ route('company.shifts.delete', $company->id) }}" class="btn btn-danger m-2">
-            ❌ シフト削除
-        </a>
+
       </div>
     </div>
   </div>
