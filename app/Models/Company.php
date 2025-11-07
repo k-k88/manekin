@@ -17,27 +17,44 @@ class Company extends Model
         'closing_day', // ✅ 追加！締め日カラム
     ];
 
-    // ✅ 1つの企業は複数のユーザーを持つ
-    public function users()
+    /**
+     * 企業に所属するユーザー（従業員）
+     */
+    public function employees()
     {
-        return $this->hasMany(User::class);
+        // Employee モデルの代わりに User モデルを使用
+        return $this->hasMany(User::class, 'company_id', 'id');
     }
 
-    // ✅ 1つの企業は複数の店舗を持つ
-    public function stores()
-    {
-        return $this->hasMany(Store::class);
-    }
-
-    // ✅ 1つの企業はユーザーを通じて複数の勤怠データを持つ
+    /**
+     * 企業に紐づく勤怠データ
+     */
     public function attendances()
     {
         return $this->hasMany(Attendance::class, 'company_id', 'id');
     }
 
-    // ✅ 1つの企業は複数の給与データ（Payroll）を持つ
+    /**
+     * 企業に紐づく給与データ
+     */
     public function payrolls()
     {
-        return $this->hasMany(Payroll::class);
+        return $this->hasMany(Payroll::class, 'company_id', 'id');
+    }
+
+    /**
+     * 企業に紐づく店舗データ
+     */
+    public function stores()
+    {
+        return $this->hasMany(Store::class);
+    }
+
+    /**
+     * 企業に紐づくユーザー（別名）
+     */
+    public function users()
+    {
+        return $this->hasMany(User::class);
     }
 }

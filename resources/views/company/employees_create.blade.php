@@ -45,6 +45,8 @@
                 placeholder="例: 090-1234-5678"
                 pattern="\d{2,4}-\d{2,4}-\d{3,4}"
                 title="000-0000-0000 の形式で入力してください"
+                maxlength="13" {{-- 090-1234-5678形式の最大文字数 --}}
+                required
             >
         </div>
 
@@ -93,16 +95,23 @@
     </form>
 </div>
 
-{{-- 電話番号の自動ハイフン挿入 --}}
+{{-- 📱 電話番号の自動ハイフン＆桁数制限 --}}
 <script>
-document.getElementById('phoneInput').addEventListener('input', e => {
-    let v = e.target.value.replace(/\D/g, ''); // 数字以外を除去
-    if (v.length > 3 && v.length <= 7) {
-        e.target.value = v.replace(/(\d{3})(\d+)/, '$1-$2');
-    } else if (v.length > 7) {
-        e.target.value = v.replace(/(\d{3})(\d{4})(\d+)/, '$1-$2-$3');
-    } else {
+const phoneInput = document.getElementById('phoneInput');
+
+phoneInput.addEventListener('input', e => {
+    let v = e.target.value.replace(/\D/g, ''); // 数字以外削除
+
+    // ✅ 数字は最大11桁まで
+    if (v.length > 11) v = v.slice(0, 11);
+
+    // ✅ 自動ハイフン挿入（携帯番号想定）
+    if (v.length <= 3) {
         e.target.value = v;
+    } else if (v.length <= 7) {
+        e.target.value = v.replace(/(\d{3})(\d+)/, '$1-$2');
+    } else {
+        e.target.value = v.replace(/(\d{3})(\d{4})(\d+)/, '$1-$2-$3');
     }
 });
 </script>

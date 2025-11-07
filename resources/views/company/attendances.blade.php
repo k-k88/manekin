@@ -1,21 +1,18 @@
 @extends('layouts.app')
- 
+
 @section('content')
 <div class="container mt-4">
     <h2 class="mb-4">🕒 {{ $company->name }} 勤怠一覧</h2>
- 
+
     {{-- 🔹 ナビボタン --}}
-    <div class="mb-3 d-flex gap-2">
+    <div class="mb-3 d-flex gap-2 flex-wrap">
         <!-- ダッシュボードに戻るボタン -->
         <a href="{{ route('company.dashboard', $company->id) }}" class="btn btn-secondary">← ダッシュボードに戻る</a>
 
-        <!-- 勤怠追加ボタン（POST送信） -->
-        <form action="{{ route('company.createAttendance', $company->id) }}" method="POST" class="d-inline">
-            @csrf
-            <button type="submit" class="btn btn-success">＋勤怠を追加</button>
-        </form>
+        <!-- 勤怠追加ボタン -->
+        <a href="{{ route('company.attendances.create', $company->id) }}" class="btn btn-success">＋勤怠を追加</a>
     </div>
- 
+
     {{-- 🔹 メッセージ表示 --}}
     @if (session('success'))
         <div class="alert alert-success alert-dismissible fade show" role="alert">
@@ -23,14 +20,14 @@
             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="閉じる"></button>
         </div>
     @endif
- 
+
     @if (session('error'))
         <div class="alert alert-danger alert-dismissible fade show" role="alert">
             {{ session('error') }}
             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="閉じる"></button>
         </div>
     @endif
- 
+
     @if ($errors->any())
         <div class="alert alert-danger alert-dismissible fade show" role="alert">
             <ul class="mb-0">
@@ -41,7 +38,7 @@
             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="閉じる"></button>
         </div>
     @endif
- 
+
     {{-- 🔹 月・社員フィルター --}}
     <form method="GET" class="mb-3 d-flex gap-2 align-items-center flex-wrap">
         <input type="month" name="month" value="{{ request('month', now()->format('Y-m')) }}" class="form-control w-auto">
@@ -56,7 +53,7 @@
         <button type="submit" class="btn btn-primary">表示</button>
         <a href="{{ route('company.attendances', $company->id) }}" class="btn btn-outline-secondary">リセット</a>
     </form>
- 
+
     {{-- 🔹 勤怠一覧テーブル --}}
     <table class="table table-bordered table-hover align-middle shadow-sm">
         <thead class="table-light">
@@ -96,6 +93,7 @@
                     <form action="{{ route('company.attendances.update', ['company' => $company->id, 'attendance' => $attendance->id]) }}" method="POST">
                         @csrf
                         @method('PUT')
+
                         <td>
                             <input type="text" name="clock_in" class="form-control time-input" value="{{ $displayClockIn }}" placeholder="HH:MM">
                         </td>
@@ -161,7 +159,7 @@
         </tbody>
     </table>
 </div>
- 
+
 {{-- 🔹 コロン自動挿入スクリプト --}}
 <script>
 document.addEventListener('DOMContentLoaded', function() {

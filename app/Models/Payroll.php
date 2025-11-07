@@ -8,30 +8,30 @@ use Illuminate\Database\Eloquent\Model;
 class Payroll extends Model
 {
     use HasFactory;
-
-    // 👇 単数形テーブル名を明示
     protected $table = 'payroll';
-
     protected $fillable = [
         'user_id',
         'company_id',
         'attendance_id',
         'hourly_wage',
-        'attendance_id' ,
-        'company_id',
         'total_hours',
         'total_pay',
         'month',
     ];
 
+    /**
+     * 🔹 ユーザー（社員）情報
+     */
     public function user()
     {
         return $this->belongsTo(User::class);
     }
 
+    /**
+     * 🔹 勤怠情報
+     */
     public function attendance()
-{
-    return $this->belongsTo(Attendance::class);
-}
-
+    {
+        return $this->belongsTo(Attendance::class);
+    }
 }

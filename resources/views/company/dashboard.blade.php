@@ -43,10 +43,10 @@
 
     <hr>
 
-    {{-- ✅ 締め日設定フォーム --}}
+    {{-- 🔧 締め日設定フォーム --}}
     <h4 class="mt-4">🔧 締め日設定</h4>
 
-    <form action="{{ route('companies.update', $company->id) }}" method="POST" class="mb-4">
+    <form action="{{ route('company.update', $company->id) }}" method="POST" class="mb-4">
         @csrf
         @method('PUT')
 
@@ -80,19 +80,19 @@
         <a href="{{ route('company.attendances', $company->id) }}" class="btn btn-success m-2">🕓 勤怠一覧</a>
         <a href="{{ route('company.payrolls', $company->id) }}" class="btn btn-warning m-2">💰 給与一覧</a>
 
-        {{-- ✅ シフト提出状況リンク --}}
+        {{-- シフト提出状況リンク --}}
         <a href="{{ route('company.shift.requests', $company->id) }}" class="btn btn-info m-2">
             📨 シフト提出一覧（承認待ち）
         </a>
 
-        <!-- 🗓️ シフト調整ボタン（モーダル表示） -->
+        <!-- シフト調整ボタン -->
         <button type="button" class="btn btn-secondary m-2" data-bs-toggle="modal" data-bs-target="#shiftModal">
             🗓️ シフト調整
         </button>
     </div>
 </div>
 
-<!-- 🗓️ シフト調整モーダル -->
+<!-- シフト調整モーダル -->
 <div class="modal fade" id="shiftModal" tabindex="-1" aria-labelledby="shiftModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content shadow-lg">
@@ -105,14 +105,12 @@
         <p>以下の操作を選択してください。</p>
 
         <a href="{{ route('company.shift.calendar.edit', ['company' => $company->id]) }}" class="btn btn-primary m-2">
-        ✏️ シフト編集（確定側）
-            </a>
-
-        <a href="{{ route('company.shift.delete.page', ['company' => $company->id]) }}" class="btn btn-danger m-2">
-        ❌ シフト削除
+            ✏️ シフト編集（確定側）
         </a>
 
-
+        <a href="{{ route('company.shift.delete.page', ['company' => $company->id]) }}" class="btn btn-danger m-2">
+            ❌ シフト削除
+        </a>
       </div>
     </div>
   </div>

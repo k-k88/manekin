@@ -7,6 +7,8 @@ use App\Http\Controllers\LineWebhookController;
 use App\Http\Controllers\PayrollController;
 use App\Http\Controllers\ShiftController;
 use App\Http\Controllers\ShiftApprovalController;
+use App\Http\Controllers\EmployeeController;
+use App\Http\Controllers\AttendanceController;
 
 // ================================
 // LINE Webhook（CSRF除外）
@@ -14,16 +16,15 @@ use App\Http\Controllers\ShiftApprovalController;
 Route::post('/line/webhook', [LineWebhookController::class, 'webhook']);
 
 // ================================
-// ログイン / ログアウト
+// 認証不要ルート
 // ================================
 Route::get('/login', [AuthController::class, 'showLoginForm'])->name('login');
 Route::post('/login', [AuthController::class, 'login'])->name('login.post');
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
-// ホーム → ログイン
 Route::get('/', fn() => redirect('/login'));
 
-// LINEシフトログイン
+// LINEシフトログイン（従業員用）
 Route::get('/shift/login/{line_user_id}', [ShiftController::class, 'loginWithLine'])->name('shift.login');
 
 // ================================
@@ -39,85 +40,64 @@ Route::middleware(['auth'])->group(function () {
         // ダッシュボード
         Route::get('/dashboard', [CompanyController::class, 'dashboard'])->name('dashboard');
 
-        // 出退勤管理
-        Route::get('/attendances', [CompanyController::class, 'attendances'])->name('attendances');
-        Route::put('/attendances/{attendance}', [CompanyController::class, 'updateAttendance'])->name('attendances.update');
-        Route::delete('/attendances/{attendance}', [CompanyController::class, 'destroyAttendance'])->name('attendances.destroy');
+        // 会社情報更新（締め日など）
+        Route::put('/', [CompanyController::class, 'update'])->name('update');
+
+        // recent logs
         Route::get('/recent-logs', [CompanyController::class, 'recentLogs'])->name('recentLogs');
-        Route::get('/attendances/create', [CompanyController::class, 'createAttendance'])->name('attendances.create');
-        Route::post('/attendances', [CompanyController::class, 'storeAttendance'])->name('attendances.store');
 
         // 社員管理
-        Route::get('/employees', [CompanyController::class, 'employees'])->name('employees');
-        Route::get('/employees/create', [CompanyController::class, 'createEmployee'])->name('employees.create');
-        Route::post('/employees', [CompanyController::class, 'storeEmployee'])->name('employees.store');
-        Route::get('/employees/{employee}/edit', [CompanyController::class, 'editEmployee'])->name('employees.edit');
-        Route::post('/employees/{employee}', [CompanyController::class, 'updateEmployee'])->name('employees.update');
-        Route::delete('/employees/{employee}', [CompanyController::class, 'deleteEmployee'])->name('employees.delete');
-        Route::put('/employees/{employee}/update-wage', [CompanyController::class, 'updateWage'])->name('employees.updateWage');
+        Route::get('/employees', [EmployeeController::class, 'employees'])->name('employees');
+        Route::get('/employees/create', [EmployeeController::class, 'createEmployee'])->name('employees.create');
+        Route::post('/employees', [EmployeeController::class, 'storeEmployee'])->name('employees.store');
+        Route::get('/employees/{employee}/edit', [EmployeeController::class, 'editEmployee'])->name('employees.edit');
+        Route::put('/employees/{employee}', [EmployeeController::class, 'updateEmployee'])->name('employees.update');
+        Route::delete('/employees/{employee}', [EmployeeController::class, 'deleteEmployee'])->name('employees.delete');
+        Route::put('/employees/{employee}/update-wage', [EmployeeController::class, 'updateWage'])->name('employees.updateWage');
+
+        // 勤怠管理
+        Route::get('/attendances', [AttendanceController::class, 'index'])->name('attendances');
+        Route::get('/attendances/create', [AttendanceController::class, 'createAttendance'])->name('attendances.create');
+        Route::post('/attendances', [AttendanceController::class, 'storeAttendance'])->name('attendances.store');
+        Route::get('/attendances/{attendance}/edit', [AttendanceController::class, 'editAttendance'])->name('attendances.edit');
+        Route::put('/attendances/{attendance}', [AttendanceController::class, 'updateAttendance'])->name('attendances.update');
+        Route::delete('/attendances/{attendance}', [AttendanceController::class, 'destroyAttendance'])->name('attendances.destroy');
 
         // 給与管理
-        Route::get('/payrolls', [CompanyController::class, 'payrolls'])->name('payrolls');
-        Route::get('/payrolls/pdf', [CompanyController::class, 'payrollsPdf'])->name('payrollsPdf');
-        Route::get('/payrolls/csv', [CompanyController::class, 'payrollsCsv'])->name('payrollsCsv');
-        Route::get('/payrolls/recalculate', [CompanyController::class, 'recalculatePayroll'])->name('payrolls.recalculate');
+        Route::get('/payrolls', [PayrollController::class, 'payrolls'])->name('payrolls');
+        Route::get('/payrolls/csv', [PayrollController::class, 'payrollsCsv'])->name('payrollsCsv');
+        Route::get('/payrolls/pdf', [PayrollController::class, 'payrollsPdf'])->name('payrollsPdf');
+        Route::post('/payrolls/recalculate', [PayrollController::class, 'recalculate'])->name('payrolls.recalculate');
 
         // -----------------------------
-        // シフト承認フロー（管理者）
+        // シフト承認フロー（管理者用）
         // -----------------------------
-        Route::get('/shift/requests', [ShiftApprovalController::class, 'index'])->name('shift.requests');
-        Route::post('/shift/requests/{requestModel}/approve', [ShiftApprovalController::class, 'approve'])->name('shift.requests.approve');
-        Route::post('/shift/requests/{requestModel}/reject', [ShiftApprovalController::class, 'reject'])->name('shift.requests.reject');
-        Route::post('/shift/requests/approve-all', [ShiftApprovalController::class, 'approveAll'])->name('shift.requests.approveAll');
+        Route::prefix('shift')->name('shift.')->group(function () {
+            Route::get('/requests', [ShiftApprovalController::class, 'index'])->name('requests');
+            Route::post('/requests/{requestModel}/approve', [ShiftApprovalController::class, 'approve'])->name('requests.approve');
+            Route::post('/requests/{requestModel}/reject', [ShiftApprovalController::class, 'reject'])->name('requests.reject');
+            Route::post('/requests/approve-all', [ShiftApprovalController::class, 'approveAll'])->name('requests.approveAll');
 
-        // シフト編集カレンダー（管理者）
-        Route::get('/shift/edit', [ShiftApprovalController::class, 'calendar'])->name('shift.calendar.edit');
-        Route::post('/shift/edit', [ShiftApprovalController::class, 'calendarSave'])->name('shift.calendar.save');
+            Route::get('/edit', [ShiftApprovalController::class, 'calendar'])->name('calendar.edit');
+            Route::post('/edit', [ShiftApprovalController::class, 'calendarSave'])->name('calendar.save');
+            Route::post('/save', [ShiftApprovalController::class, 'save'])->name('save');
+            Route::get('/delete', [ShiftApprovalController::class, 'deletePage'])->name('delete.page');
+            Route::delete('/delete', [ShiftApprovalController::class, 'delete'])->name('delete');
 
-        // シフト確定保存（承認済み）
-        Route::post('/shift/save', [ShiftApprovalController::class, 'save'])->name('shift.save');
-
-        // シフト削除
-        Route::get('/shift/delete', [ShiftApprovalController::class, 'deletePage'])->name('shift.delete.page');
-        Route::delete('/shift/delete', [ShiftApprovalController::class, 'delete'])->name('shift.delete');
-
-        // 管理者用：日付ごとの希望シフト取得（Ajax）
-        Route::get('/shift/requests/{date}', [ShiftApprovalController::class, 'getRequestsByDate'])
-            ->name('shift.requests.by_date');
+            Route::get('/requests/{date}', [ShiftApprovalController::class, 'getRequestsByDate'])->name('requests.by_date');
+            Route::get('/{id}', [ShiftApprovalController::class, 'show'])->name('show');
+            Route::delete('/{id}', [ShiftApprovalController::class, 'destroy'])->name('destroy');
+        });
     });
 
     // -----------------------------
-    // 従業員自身によるシフト提出（スマホ用）
+    // 従業員用シフト提出
     // -----------------------------
-    Route::get('/shift/calendar/{user}', [ShiftController::class, 'calendar'])->name('shift.user.calendar');
-    Route::get('/shift/events/{user}', [ShiftController::class, 'events'])->name('shift.user.events');
-    Route::post('/shift/save', [ShiftController::class, 'save'])->name('shift.user.save');
-    Route::post('/shift/save-all', [ShiftController::class, 'saveAll'])->name('shift.user.saveAll');
-    Route::delete('/shift/{shift}', [ShiftController::class, 'delete'])->name('shift.user.delete');
+    Route::prefix('shift')->name('shift.user.')->group(function () {
+        Route::get('/calendar/{user}', [ShiftController::class, 'calendar'])->name('calendar');
+        Route::get('/events/{user}', [ShiftController::class, 'events'])->name('events');
+        Route::post('/save', [ShiftController::class, 'save'])->name('save');
+        Route::post('/save-all', [ShiftController::class, 'saveAll'])->name('saveAll');
+        Route::delete('/{shift}', [ShiftController::class, 'delete'])->name('delete');
+    });
 });
-
-// -----------------------------
-// 会社情報更新
-// -----------------------------
-Route::put('/companies/{company}', [CompanyController::class, 'update'])->name('companies.update');
-
-Route::middleware(['auth'])->group(function () {
-    Route::post('/company/{company}/attendance/create', [CompanyController::class, 'createAttendance'])
-        ->name('company.createAttendance');
-});
-
-Route::post('/company/{company}/attendance', [CompanyController::class, 'store'])
-    ->name('company.attendances.store');
-
-
-Route::get('/company/{company}/shift/requests/{date}', [ShiftApprovalController::class, 'getRequestsByDate'])
-    ->name('company.shift.requests');
-
-Route::post('/company/{company}/shift/save', [ShiftApprovalController::class, 'save'])
-    ->name('company.shift.save');
-
-Route::post('/companies/{company}/shifts/save', [ShiftApprovalController::class, 'save']);
-Route::delete('/companies/{company}/shifts/{shift}', [ShiftApprovalController::class, 'destroy']);
-
-Route::get('/company/{company}/shift/{id}', [ShiftApprovalController::class, 'show'])->name('shift.show');
-Route::delete('/company/{company}/shift/{id}', [ShiftApprovalController::class, 'destroy'])->name('shift.destroy');
