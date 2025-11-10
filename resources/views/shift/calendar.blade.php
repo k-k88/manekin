@@ -159,7 +159,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // 月提出（ルート名を修正）
     document.getElementById('saveAllBtn').addEventListener('click', function () {
-        fetch("{{ route('shift.user.saveAll') }}", {  // ← 修正済
+        fetch("{{ route('shift.user.saveAll', ['user'=>$user->id]) }}", {
+// ← 修正済
             method: "POST",
             headers: {
                 'Content-Type': 'application/json',
