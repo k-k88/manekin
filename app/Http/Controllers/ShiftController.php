@@ -23,6 +23,7 @@ class ShiftController extends Controller
     }
  
     // ✅ カレンダー表示
+// ✅ カレンダー表示
 public function calendar(User $user, Request $request)
 {
     $year  = $request->input('year', now()->year);
@@ -36,11 +37,7 @@ public function calendar(User $user, Request $request)
         ->whereDate('shift_date', '>=', $firstDay)
         ->whereDate('shift_date', '<=', $lastDay)
         ->get()
-        ->map(function ($s) {
-            $s->shift_date = Carbon::parse($s->shift_date); // ← ここで Carbon にする
-            return $s;
-        })
-        ->keyBy(fn($s) => $s->shift_date->toDateString());
+        ->keyBy('shift_date');   // ★ ここ、文字列で groupKey にする
 
     // ✅ 提出中シフト（青）
     $requests = ShiftRequest::where('user_id', $user->id)
@@ -48,11 +45,7 @@ public function calendar(User $user, Request $request)
         ->whereDate('shift_date', '<=', $lastDay)
         ->orderBy('created_at', 'desc')
         ->get()
-        ->map(function ($s) {
-            $s->shift_date = Carbon::parse($s->shift_date); // ← こっちも
-            return $s;
-        })
-        ->groupBy(fn($s) => $s->shift_date->toDateString());
+        ->groupBy('shift_date'); // ★ 同様にこれだけ
 
     return view('shift.calendar', compact(
         'user', 'year', 'month', 'firstDay', 'lastDay', 'confirmed', 'requests'
