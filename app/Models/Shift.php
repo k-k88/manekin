@@ -20,9 +20,10 @@ class Shift extends Model
     ];
 
     protected $casts = [
-        'shift_date' => 'date',
-        'start_time' => 'datetime:H:i',
-        'end_time'   => 'datetime:H:i',
+        'shift_date' => 'string',
+        'start_time' => 'datetime',
+        'end_time'   => 'datetime',
+
         'is_day_off' => 'boolean',
     ];
 
