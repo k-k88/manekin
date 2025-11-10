@@ -12,9 +12,10 @@ class ShiftRequest extends Model
     ];
 
     protected $casts = [
-        'shift_date' => 'date',
-        'start_time' => 'datetime:H:i',
-        'end_time'   => 'datetime:H:i',
+        
+         'shift_date' => 'date',
+        'start_time' => 'string',   // ← ★ここを datetime → string
+        'end_time'   => 'string',  
         'is_day_off' => 'boolean',
     ];
 

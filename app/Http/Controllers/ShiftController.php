@@ -23,33 +23,42 @@ class ShiftController extends Controller
     }
  
     // ✅ カレンダー表示
-    public function calendar(User $user, Request $request)
-    {
-        $year  = $request->input('year', now()->year);
-        $month = $request->input('month', now()->month);
- 
-        $firstDay = Carbon::create($year, $month, 1);
-        $lastDay  = $firstDay->copy()->endOfMonth();
- 
-        // ✅ 確定シフト（緑）
-        $confirmed = Shift::where('user_id', $user->id)
-            ->whereDate('shift_date', '>=', $firstDay)
-            ->whereDate('shift_date', '<=', $lastDay)
-            ->get()
-            ->keyBy(fn($s) => $s->shift_date->toDateString());
- 
-        // ✅ 提出中シフト（青）
-        $requests = ShiftRequest::where('user_id', $user->id)
-            ->whereDate('shift_date', '>=', $firstDay)
-            ->whereDate('shift_date', '<=', $lastDay)
-            ->orderBy('created_at', 'desc')
-            ->get()
-            ->groupBy(fn($s) => $s->shift_date->toDateString());
- 
-        return view('shift.calendar', compact(
-            'user', 'year', 'month', 'firstDay', 'lastDay', 'confirmed', 'requests'
-        ));
-    }
+public function calendar(User $user, Request $request)
+{
+    $year  = $request->input('year', now()->year);
+    $month = $request->input('month', now()->month);
+
+    $firstDay = Carbon::create($year, $month, 1);
+    $lastDay  = $firstDay->copy()->endOfMonth();
+
+    // ✅ 確定シフト（緑）
+    $confirmed = Shift::where('user_id', $user->id)
+        ->whereDate('shift_date', '>=', $firstDay)
+        ->whereDate('shift_date', '<=', $lastDay)
+        ->get()
+        ->map(function ($s) {
+            $s->shift_date = Carbon::parse($s->shift_date); // ← ここで Carbon にする
+            return $s;
+        })
+        ->keyBy(fn($s) => $s->shift_date->toDateString());
+
+    // ✅ 提出中シフト（青）
+    $requests = ShiftRequest::where('user_id', $user->id)
+        ->whereDate('shift_date', '>=', $firstDay)
+        ->whereDate('shift_date', '<=', $lastDay)
+        ->orderBy('created_at', 'desc')
+        ->get()
+        ->map(function ($s) {
+            $s->shift_date = Carbon::parse($s->shift_date); // ← こっちも
+            return $s;
+        })
+        ->groupBy(fn($s) => $s->shift_date->toDateString());
+
+    return view('shift.calendar', compact(
+        'user', 'year', 'month', 'firstDay', 'lastDay', 'confirmed', 'requests'
+    ));
+}
+
  
     // ✅ 一時保存（1日分）
     public function save(Request $request)

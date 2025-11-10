@@ -20,9 +20,9 @@ class Shift extends Model
     ];
 
     protected $casts = [
-        'shift_date' => 'string',
-        'start_time' => 'datetime',
-        'end_time'   => 'datetime',
+       'shift_date' => 'string',
+       'start_time' => 'string',   // ← datetime をやめて文字列にする！
+        'end_time'   => 'string', 
 
         'is_day_off' => 'boolean',
     ];

@@ -119,11 +119,18 @@
 document.addEventListener('DOMContentLoaded', function(){
     const shiftModal = new bootstrap.Modal('#shiftModal');
 
+    // ★ TIME / DATETIME 共通で時刻抽出
+    function extractTime(value){
+        if(!value) return '';
+        return value.length >= 16 ? value.slice(11,16) : value.slice(0,5);
+    }
+
     window.openShiftModal = function(date) {
         document.getElementById('modalTitle').textContent = "新規シフト登録";
         document.getElementById('shift_date').value = date;
         document.getElementById('edit_shift_id').value = '';
         document.getElementById('deleteBtn').style.display = 'none';
+
         document.getElementById('shift_user').value = '';
         document.getElementById('shift_start').value = '';
         document.getElementById('shift_end').value = '';
@@ -137,15 +144,13 @@ document.addEventListener('DOMContentLoaded', function(){
                     html = '<p class="text-muted">この日の登録・希望シフトはありません。</p>';
                 } else {
                     data.forEach(s => {
+                        let start = s.is_day_off ? '' : extractTime(s.start_time);
+                        let end   = s.is_day_off ? '' : extractTime(s.end_time);
                         const kind = s.status === 'confirmed' ? '✅確定' : '📝希望';
-                        let start = '', end = '';
-                        if(!s.is_day_off){
-                            if(s.start_time) start = s.start_time.substring(11,16);
-                            if(s.end_time)   end   = s.end_time.substring(11,16);
-                        }
+
                         html += `<div style="cursor:pointer;"
-                                     onclick="applyRequestShift(${s.user_id}, '${start}', '${end}', ${s.is_day_off})">
-                                     ${kind}：${s.user_name} ${s.is_day_off ? '(休み)' : start+'〜'+end}
+                                 onclick="applyRequestShift(${s.user_id}, '${start}', '${end}', ${s.is_day_off})">
+                                    ${kind}：${s.user_name} ${s.is_day_off ? '(休み)' : start+'〜'+end}
                                  </div>`;
                     });
                 }
@@ -161,57 +166,37 @@ document.addEventListener('DOMContentLoaded', function(){
         document.getElementById('shift_dayoff').checked = isDayOff == 1;
     };
 
- window.editShift = function(id){
-    fetch(`/company/{{ $company->id }}/shift/${id}`)
+    window.editShift = function(id){
+        fetch(`/company/{{ $company->id }}/shift/${id}`)
+            .then(r => r.json())
+            .then(shift => {
+                document.getElementById('modalTitle').textContent = "シフト編集";
+                document.getElementById('edit_shift_id').value = shift.id;
+                document.getElementById('shift_date').value = shift.shift_date.slice(0,10);
+
+                document.getElementById('shift_user').value = shift.user_id;
+                document.getElementById('shift_start').value = extractTime(shift.start_time);
+                document.getElementById('shift_end').value   = extractTime(shift.end_time);
+                document.getElementById('shift_dayoff').checked = shift.is_day_off == 1;
+
+                document.getElementById('deleteBtn').style.display = 'inline-block';
+                document.getElementById('existing_shifts').innerHTML = '';
+                shiftModal.show();
+            });
+    };
+
+    window.saveShift = function() {
+        const formData = new FormData(document.getElementById('shiftForm'));
+
+        fetch('{{ route("company.shift.save", $company->id) }}', {
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+            body: formData
+        })
         .then(r => r.json())
-        .then(shift => {
-            document.getElementById('modalTitle').textContent = "シフト編集";
-            document.getElementById('edit_shift_id').value = shift.id;
-            document.getElementById('shift_date').value = shift.shift_date.slice(0, 10);
-
-            document.getElementById('shift_user').value = shift.user_id;
-
-            // ★ ここを修正
-            let start = shift.start_time ? shift.start_time.slice(11, 16) : '';
-            let end   = shift.end_time   ? shift.end_time.slice(11, 16) : '';
-
-
-            document.getElementById('shift_start').value = start;
-            document.getElementById('shift_end').value   = end;
-            document.getElementById('shift_dayoff').checked = shift.is_day_off == 1;
-            document.getElementById('deleteBtn').style.display = 'inline-block';
-            document.getElementById('existing_shifts').innerHTML = '';
-            shiftModal.show();
-        });
-};
-
-
-  window.saveShift = function() {
-    const formData = new FormData(document.getElementById('shiftForm'));
-
-    // ★ start_time, end_time が "2025-11-02T15:00:00.000000Z" なら "15:00" にする
-    if(formData.get('start_time')){
-        formData.set('start_time', formData.get('start_time').substring(0,5));
-    }
-    if(formData.get('end_time')){
-        formData.set('end_time', formData.get('end_time').substring(0,5));
-    }
-
-    fetch('{{ route("company.shift.save", $company->id) }}', {
-        method: 'POST',
-        headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
-        body: formData
-    })
-    .then(r => r.json())
-    .then(res => {
-        shiftModal.hide();
-        location.reload();
-    })
-    .catch(() => alert('保存に失敗しました'));
-};
-
-
-
+        .then(() => { shiftModal.hide(); location.reload(); })
+        .catch(() => alert('保存に失敗しました'));
+    };
 
     window.deleteShift = function(){
         const id = document.getElementById('edit_shift_id').value;
@@ -222,14 +207,7 @@ document.addEventListener('DOMContentLoaded', function(){
             headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
         })
         .then(r => r.json())
-        .then(res => {
-            if(res.success){
-                shiftModal.hide();
-                location.reload();
-            } else {
-                alert('削除に失敗しました');
-            }
-        });
+        .then(res => { if(res.success){ shiftModal.hide(); location.reload(); } });
     };
 });
 </script>
