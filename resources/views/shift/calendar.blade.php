@@ -4,7 +4,6 @@
 <div class="container">
     <h3 class="mb-3 text-center">📅 {{ $user->name }} さんのシフト登録</h3>
 
-    {{-- 🆕 hidden --}}
     <input type="hidden" id="shift_user_id" value="{{ $user->id }}">
 
     @php
@@ -28,6 +27,7 @@
             </tr>
         </thead>
         <tbody>
+
         @php $day = 1 - $firstDay->dayOfWeek; @endphp
         @while($day <= $lastDay->day)
             <tr>
@@ -37,15 +37,17 @@
                     @if($day < 1 || $day > $lastDay->day)
                         <td></td>
                     @else
+
+                        {{-- ✅ 修正：ここで first() を使う --}}
                         @php
-                            $confirmedShift = $confirmed[$dateStr] ?? null;
-                            $requestShift   = $requests[$dateStr][0] ?? null;
+                            $confirmedShift = isset($confirmed[$dateStr]) ? $confirmed[$dateStr]->first() : null;
+                            $requestShift   = isset($requests[$dateStr]) ? $requests[$dateStr]->first() : null;
                         @endphp
 
                         <td class="shift-day p-2" data-date="{{ $dateStr }}">
                             <strong>{{ $day }}</strong>
 
-                            {{-- 提出中（青） --}}
+                            {{-- 🟦 提出中 --}}
                             @if($requestShift)
                                 @if($requestShift->is_day_off)
                                     <div class="text-primary fw-semibold small">❌ 希望休 (提出中)</div>
@@ -57,10 +59,10 @@
                                     </div>
                                 @endif
 
-                            {{-- 確定済（緑） --}}
+                            {{-- 🟩 確定 --}}
                             @elseif($confirmedShift)
                                 @if($confirmedShift->is_day_off)
-                                    <div class="text-danger fw-bold small">❌ 希望休</div>
+                                    <div class="text-danger fw-bold small">❌ 確定休</div>
                                 @else
                                     <div class="text-success small fw-semibold">
                                         {{ \Carbon\Carbon::parse($confirmedShift->start_time)->format('H:i') }}〜
@@ -82,7 +84,7 @@
     <button id="saveAllBtn" class="btn btn-primary w-100 my-3">💾 この月のシフトを提出する</button>
 </div>
 
-<!-- シフト入力モーダル -->
+{{-- モーダル --}}
 <div class="modal fade" id="shiftModal" tabindex="-1">
     <div class="modal-dialog">
         <form id="shiftForm" class="modal-content">
@@ -127,7 +129,7 @@ document.addEventListener('DOMContentLoaded', function () {
             : `<div class="text-warning small fw-semibold">${s.start_time}〜${s.end_time} (下書き)</div>`;
     }
 
-    // 日クリック → モーダル
+    // モーダルを開く
     document.querySelectorAll('.shift-day').forEach(cell => {
         cell.addEventListener('click', () => {
             const date = cell.dataset.date;
@@ -138,6 +140,7 @@ document.addEventListener('DOMContentLoaded', function () {
             document.getElementById('is_day_off').checked = s.is_day_off;
             document.getElementById('start_time').value = s.start_time;
             document.getElementById('end_time').value = s.end_time;
+
             document.getElementById('timeInputs').style.opacity = s.is_day_off ? 0.3 : 1;
 
             new bootstrap.Modal(document.getElementById('shiftModal')).show();
@@ -157,10 +160,9 @@ document.addEventListener('DOMContentLoaded', function () {
         location.reload();
     });
 
-    // 月提出（ルート名を修正）
+    // 月提出
     document.getElementById('saveAllBtn').addEventListener('click', function () {
         fetch("{{ route('shift.user.saveAll', ['user'=>$user->id]) }}", {
-// ← 修正済
             method: "POST",
             headers: {
                 'Content-Type': 'application/json',

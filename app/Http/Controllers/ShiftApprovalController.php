@@ -115,33 +115,43 @@ public function save(Request $request, $companyId)
 {
     \Log::info('SHIFT SAVE REQUEST', $request->all());
 
-    $shift = $request->shift_id
-        ? Shift::find($request->shift_id)
-        : new Shift;
+    $userId = $request->user_id;
+    $date   = Carbon::parse(substr($request->date, 0, 10))->format('Y-m-d'); // ✅ 日付固定
 
-    $shift->user_id = $request->user_id;
+    // ✅ 同じ日・同じ人のシフトが既にある場合 → 上書きではなく編集扱い
+    $shift = Shift::where('user_id', $userId)
+        ->where('shift_date', $date)
+        ->first();
 
-    // ★ 修正：常に対象ユーザーの店舗を使う（管理者でもOKになる）
-    $targetUser = \App\Models\User::find($request->user_id);
-    $shift->store_id = $targetUser->store_id; // ★ここが重要
+    if (!$shift) {
+        $shift = new Shift();
+    }
 
-    $shift->shift_date = substr($request->date, 0, 10);
+    $targetUser = \App\Models\User::find($userId);
+    $shift->user_id  = $userId;
+    $shift->store_id = $targetUser->store_id;
+    $shift->shift_date = $date;
     $shift->status = 'approved';
 
-    if ($request->is_day_off) {
+    if ($request->boolean('is_day_off')) {
+        // ✅ 希望休
         $shift->is_day_off = 1;
         $shift->start_time = null;
-        $shift->end_time = null;
+        $shift->end_time   = null;
     } else {
         $shift->is_day_off = 0;
 
-        // 入力値（time）は "HH:MM" なのでそれをそのまま DB 用に整形する
-        $start = $request->start_time ? substr($request->start_time, -5) : null; // 例 "15:00"
-        $end   = $request->end_time   ? substr($request->end_time, -5) : null;
+        // ✅ HH:MM → YYYY-MM-DD HH:MM:SS に固定して保存（ズレ対策）
+        $start = $request->start_time ? substr($request->start_time, -5) : null;
+        $end   = $request->end_time   ? substr($request->end_time,   -5) : null;
 
-        $baseDate = substr($request->date, 0, 10); // "YYYY-MM-DD"
-        $shift->start_time = $start ? "$baseDate $start:00" : null;
-        $shift->end_time   = $end   ? "$baseDate $end:00"   : null;
+        $shift->start_time = $start ? Carbon::parse("$date $start:00")->format('Y-m-d H:i:s') : null;
+        $shift->end_time   = $end   ? Carbon::parse("$date $end:00")->format('Y-m-d H:i:s') : null;
+
+        // ✅ もし終了が開始より早い → 深夜跨ぎ → 自動で翌日へ補正
+        if ($shift->start_time && $shift->end_time && Carbon::parse($shift->end_time)->lt(Carbon::parse($shift->start_time))) {
+            $shift->end_time = Carbon::parse($shift->end_time)->addDay()->format('Y-m-d H:i:s');
+        }
     }
 
     $shift->save();
