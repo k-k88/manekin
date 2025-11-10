@@ -24,6 +24,7 @@ class ShiftController extends Controller
  
     // ✅ カレンダー表示
 // ✅ カレンダー表示
+// ✅ カレンダー表示
 public function calendar(User $user, Request $request)
 {
     $year  = $request->input('year', now()->year);
@@ -34,23 +35,30 @@ public function calendar(User $user, Request $request)
 
     // ✅ 確定シフト（緑）
     $confirmed = Shift::where('user_id', $user->id)
-        ->whereDate('shift_date', '>=', $firstDay)
-        ->whereDate('shift_date', '<=', $lastDay)
+        ->whereBetween('shift_date', [$firstDay, $lastDay])
         ->get()
-        ->keyBy('shift_date');   // ★ ここ、文字列で groupKey にする
+        ->map(function ($s) {
+            $s->shift_date = Carbon::parse($s->shift_date);
+            return $s;
+        })
+        ->keyBy(fn($s) => $s->shift_date->toDateString());
 
     // ✅ 提出中シフト（青）
     $requests = ShiftRequest::where('user_id', $user->id)
-        ->whereDate('shift_date', '>=', $firstDay)
-        ->whereDate('shift_date', '<=', $lastDay)
+        ->whereBetween('shift_date', [$firstDay, $lastDay])
         ->orderBy('created_at', 'desc')
         ->get()
-        ->groupBy('shift_date'); // ★ 同様にこれだけ
+        ->map(function ($s) {
+            $s->shift_date = Carbon::parse($s->shift_date);
+            return $s;
+        })
+        ->groupBy(fn($s) => $s->shift_date->toDateString());
 
     return view('shift.calendar', compact(
         'user', 'year', 'month', 'firstDay', 'lastDay', 'confirmed', 'requests'
     ));
 }
+
 
  
     // ✅ 一時保存（1日分）
