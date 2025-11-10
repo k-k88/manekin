@@ -111,71 +111,51 @@ class ShiftApprovalController extends Controller
         return view('company.shift.edit', compact('company', 'shiftRequests', 'month'));
     }
 
-// シフト保存処理（save メソッド内）
 public function save(Request $request, $companyId)
 {
-    $userId  = $request->input('user_id');
-    $date    = $request->input('date');
-    $start   = $request->input('start_time');
-    $end     = $request->input('end_time');
-    $shiftId = $request->input('shift_id');
+    \Log::info('SHIFT SAVE REQUEST', $request->all());
 
-    // 秒をカット
-    $startTime = $start ? substr($start, 0, 5) : null;
-    $endTime   = $end ? substr($end, 0, 5) : null;
+    $shift = $request->shift_id
+        ? Shift::find($request->shift_id)
+        : new Shift;
 
-    // フル日時に変換
-    $startDateTime = $startTime ? $date . ' ' . $startTime : null;
-    $endDateTime   = $endTime ? $date . ' ' . $endTime : null;
+    $shift->user_id = $request->user_id;
 
-    // 翌日扱い
-    if ($startTime && $endTime && $endTime < $startTime) {
-        $endDateTime = date('Y-m-d H:i', strtotime($endDateTime . ' +1 day'));
-    }
+    // ★ 修正：常に対象ユーザーの店舗を使う（管理者でもOKになる）
+    $targetUser = \App\Models\User::find($request->user_id);
+    $shift->store_id = $targetUser->store_id; // ★ここが重要
 
-    // ユーザーの店舗ID
-    $user = \App\Models\User::find($userId);
-    $storeId = $user ? $user->store_id : \App\Models\Store::where('company_id', $companyId)->value('id');
+    $shift->shift_date = substr($request->date, 0, 10);
+    $shift->status = 'approved';
 
-    if ($shiftId) {
-        $shift = \App\Models\Shift::find($shiftId);
-        if ($shift) {
-            $shift->update([
-                'store_id'   => $storeId,
-                'shift_date' => $date,
-                'start_time' => $startDateTime,
-                'end_time'   => $endDateTime,
-                'is_day_off' => $startTime && $endTime ? 0 : 1,
-            ]);
-        }
+    if ($request->is_day_off) {
+        $shift->is_day_off = 1;
+        $shift->start_time = null;
+        $shift->end_time = null;
     } else {
-        $shift = \App\Models\Shift::updateOrCreate(
-            ['user_id' => $userId, 'shift_date' => $date],
-            [
-                'company_id' => $companyId,
-                'store_id'   => $storeId,
-                'start_time' => $startDateTime,
-                'end_time'   => $endDateTime,
-                'is_day_off' => $startTime && $endTime ? 0 : 1,
-                'status'     => 'pending',
-            ]
-        );
+        $shift->is_day_off = 0;
+
+        // 入力値（time）は "HH:MM" なのでそれをそのまま DB 用に整形する
+        $start = $request->start_time ? substr($request->start_time, -5) : null; // 例 "15:00"
+        $end   = $request->end_time   ? substr($request->end_time, -5) : null;
+
+        $baseDate = substr($request->date, 0, 10); // "YYYY-MM-DD"
+        $shift->start_time = $start ? "$baseDate $start:00" : null;
+        $shift->end_time   = $end   ? "$baseDate $end:00"   : null;
     }
 
-    // フロント用にユーザー名も含めて返す
-    return response()->json([
-        'message'   => '保存しました',
-        'shift'     => [
-            'id'         => $shift->id,
-            'user_id'    => $shift->user_id,
-            'user_name'  => $shift->user->name,
-            'shift_date' => $shift->shift_date,
-            'start_time' => $shift->start_time ? substr($shift->start_time, 11, 5) : null,
-            'end_time'   => $shift->end_time ? substr($shift->end_time, 11, 5) : null,
-            'is_day_off' => $shift->is_day_off,
-        ],
-    ]);
+    $shift->save();
+
+    return response()->json(['shift' => $shift]);
 }
+
+
+
+
+
+
+
+
 
 
  /* 時刻文字列（例："26:00"）をCarbonの日時に変換
@@ -272,54 +252,60 @@ public function calendar(Request $request, Company $company)
 }
 
     // カレンダー保存（API用）
-    public function calendarSave(Request $request, Company $company)
-    {
-        try {
-            $userId    = $request->input('user_id');
-            $storeId   = $request->input('store_id');
-            $shiftDate = $request->input('shift_date', now()->format('Y-m-d'));
+   public function calendarSave(Request $request, Company $company)
+{
+    try {
+        $userId    = $request->input('user_id');
+        $storeId   = $request->input('store_id');
+        $date      = substr($request->input('shift_date'), 0, 10); // ISO対策
 
-            if (!$userId) {
-                return response()->json(['status' => 'error', 'message' => 'ユーザーIDがありません']);
-            }
-
-            $startTime = $request->input('start_time') 
-                ? Carbon::parse($request->input('start_time'))->format('Y-m-d H:i:s') 
-                : null;
-
-            $endTime = $request->input('end_time') 
-                ? Carbon::parse($request->input('end_time'))->format('Y-m-d H:i:s') 
-                : null;
-
-            $isDayOff = $request->input('is_day_off', 0);
-
-            $shiftModel = Shift::updateOrCreate(
-                [
-                    'user_id'    => $userId,
-                    'shift_date' => $shiftDate,
-                    'store_id'   => $storeId,
-                ],
-                [
-                    'start_time' => $startTime,
-                    'end_time'   => $endTime,
-                    'is_day_off' => $isDayOff,
-                ]
-            );
-
-            return response()->json([
-                'status' => 'success',
-                'shift_id' => $shiftModel->id,
-                'message' => 'シフトが保存されました'
-            ]);
-
-        } catch (\Exception $e) {
-            \Log::error('シフト保存エラー: ' . $e->getMessage(), $request->all());
-            return response()->json([
-                'status' => 'error',
-                'message' => $e->getMessage()
-            ]);
+        if (!$userId) {
+            return response()->json(['status' => 'error', 'message' => 'ユーザーIDがありません']);
         }
+
+        if ($request->is_day_off) {
+            $startTime = null;
+            $endTime   = null;
+            $isDayOff  = 1;
+        } else {
+            $isDayOff  = 0;
+
+            $start = $request->input('start_time') ? substr($request->input('start_time'), -5) : null;
+            $end   = $request->input('end_time')   ? substr($request->input('end_time'),   -5) : null;
+
+            $startTime = $start ? "$date $start:00" : null;
+            $endTime   = $end   ? "$date $end:00"   : null;
+        }
+
+        $shiftModel = Shift::updateOrCreate(
+            [
+                'user_id'    => $userId,
+                'shift_date' => $date,
+                'store_id'   => $storeId,
+            ],
+            [
+                'start_time' => $startTime,
+                'end_time'   => $endTime,
+                'is_day_off' => $isDayOff,
+                'status'     => 'approved',
+            ]
+        );
+
+        return response()->json([
+            'status' => 'success',
+            'shift_id' => $shiftModel->id,
+            'message' => 'シフトが保存されました'
+        ]);
+
+    } catch (\Exception $e) {
+        \Log::error('シフト保存エラー: ' . $e->getMessage(), $request->all());
+        return response()->json([
+            'status' => 'error',
+            'message' => $e->getMessage()
+        ]);
     }
+}
+
 
     // 日付ごとのシフトリクエスト取得（API用）
    // ShiftApprovalController
@@ -341,4 +327,39 @@ public function getRequestsByDate($companyId, $date)
 
     return response()->json($requests);
 }
+// シフト1件取得（AJAX）
+// シフト1件取得（AJAX）
+public function show(Company $company, $id)
+{
+    $shift = Shift::whereHas('user', function($q) use ($company){
+            $q->where('company_id', $company->id);
+        })
+        ->with('user')
+        ->findOrFail($id);
+
+    return response()->json([
+        'id'         => $shift->id,
+        'user_id'    => $shift->user_id,
+        'user_name'  => $shift->user->name,
+        'shift_date' => $shift->shift_date,
+        'start_time' => $shift->start_time ? \Carbon\Carbon::parse($shift->start_time)->format('H:i') : null,
+        'end_time'   => $shift->end_time   ? \Carbon\Carbon::parse($shift->end_time)->format('H:i') : null,
+        'is_day_off' => $shift->is_day_off,
+    ]);
+}
+
+
+
+// シフト削除（AJAX）
+public function destroy(Company $company, $id)
+{
+    $shift = Shift::whereHas('user', function($q) use ($company){
+            $q->where('company_id', $company->id);
+        })
+        ->findOrFail($id);
+
+    $shift->delete();
+    return response()->json(['success' => true]);
+}
+
 }
