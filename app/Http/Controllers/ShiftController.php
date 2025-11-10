@@ -27,76 +27,90 @@ class ShiftController extends Controller
 // ✅ カレンダー表示
 public function calendar(User $user, Request $request)
 {
-    $year  = $request->input('year', now()->year);
-    $month = $request->input('month', now()->month);
+    $year = $request->year ?? now()->year;
+    $month = $request->month ?? now()->month;
 
-    $firstDay = Carbon::create($year, $month, 1);
-    $lastDay  = $firstDay->copy()->endOfMonth();
+    $firstDay = Carbon::create($year, $month, 1)->startOfMonth();
+    $lastDay = Carbon::create($year, $month, 1)->endOfMonth();
 
-    // ✅ 確定シフト（緑）
     $confirmed = Shift::where('user_id', $user->id)
-        ->whereBetween('shift_date', [$firstDay, $lastDay])
+        ->whereDate('shift_date', '>=', $firstDay)
+        ->whereDate('shift_date', '<=', $lastDay)
         ->get()
-        ->map(function ($s) {
-            $s->shift_date = Carbon::parse($s->shift_date);
-            return $s;
-        })
-        ->keyBy(fn($s) => $s->shift_date->toDateString());
+        ->groupBy(fn($s) => Carbon::parse($s->shift_date)->format('Y-m-d'));
 
-    // ✅ 提出中シフト（青）
     $requests = ShiftRequest::where('user_id', $user->id)
-        ->whereBetween('shift_date', [$firstDay, $lastDay])
-        ->orderBy('created_at', 'desc')
+        ->whereDate('shift_date', '>=', $firstDay)
+        ->whereDate('shift_date', '<=', $lastDay)
         ->get()
-        ->map(function ($s) {
-            $s->shift_date = Carbon::parse($s->shift_date);
-            return $s;
-        })
-        ->groupBy(fn($s) => $s->shift_date->toDateString());
+        ->groupBy(fn($s) => Carbon::parse($s->shift_date)->format('Y-m-d'));
 
-    return view('shift.calendar', compact(
-        'user', 'year', 'month', 'firstDay', 'lastDay', 'confirmed', 'requests'
-    ));
+    return view('shift.calendar', [
+        'user' => $user,
+        'year' => $year,
+        'month' => $month,
+        'firstDay' => $firstDay,     // ← ★ これを追加
+        'lastDay' => $lastDay,       // ← ★ これも追加
+        'confirmed' => $confirmed,
+        'requests' => $requests,
+    ]);
 }
+
+
 
 
  
     // ✅ 一時保存（1日分）
-    public function save(Request $request)
-    {
-        try {
-            $date = $request->shift_date;
-            $isDayOff = $request->boolean('is_day_off');
- 
-            $normalize = function ($date, $time) {
-                if (!$time) return null;
-                [$h, $m] = explode(':', $time);
-                $base = Carbon::parse($date . ' 00:00:00');
-                if ((int)$h >= 24) {
-                    $base->addDay();
-                    $h -= 24;
-                }
-                return $base->copy()->setTime($h, $m);
-            };
- 
-            ShiftRequest::updateOrCreate(
-                ['user_id' => $request->user_id, 'shift_date' => $date],
-                [
-                    'is_day_off' => $isDayOff,
-                    'start_time' => $isDayOff ? null : $normalize($date, $request->start_time),
-                    'end_time'   => $isDayOff ? null : $normalize($date, $request->end_time),
-                    'store_id'   => Auth::user()->store_id,
-                    'status'     => 'pending',
-                ]
-            );
- 
-            return response()->json(['success' => true]);
- 
-        } catch (\Throwable $e) {
-            \Log::error('Shift save error: '.$e->getMessage());
-            return response()->json(['success' => false], 422);
+   public function save(Request $request)
+{
+    try {
+        $date = $request->shift_date;
+        $userId = $request->user_id;
+        $isDayOff = $request->boolean('is_day_off');
+
+        // ✅ 既に確定シフトがある場合は提出禁止
+        if (Shift::where('user_id', $userId)->where('shift_date', $date)->exists()) {
+            return response()->json([
+                'success' => false,
+                'message' => '⚠ この日はすでに確定済みです'
+            ], 409);
         }
+
+        // ✅ 時刻変換関数（24時以降は翌日にする）
+        $normalize = function ($date, $time) {
+            if (!$time) return null;
+            [$h, $m] = explode(':', $time);
+            $base = \Carbon\Carbon::createFromFormat('Y-m-d H:i', "$date 00:00");
+            if ($h >= 24) {
+                $base->addDay();
+                $h -= 24;
+            }
+            return $base->setTime($h, $m)->format('Y-m-d H:i:s');
+        };
+
+        // ✅ 提出中シフトを保存（同じ日なら更新 / ないなら作成）
+        ShiftRequest::updateOrCreate(
+            [
+                'user_id' => $userId,
+                'shift_date' => $date
+            ],
+            [
+                'is_day_off' => $isDayOff,
+                'start_time' => $isDayOff ? null : $normalize($date, $request->start_time),
+                'end_time'   => $isDayOff ? null : $normalize($date, $request->end_time),
+                'store_id'   => Auth::user()->store_id,
+                'status'     => 'pending',
+            ]
+        );
+
+        return response()->json(['success' => true]);
+
+    } catch (\Throwable $e) {
+        \Log::error("Shift save error: ".$e->getMessage());
+        return response()->json(['success' => false], 500);
     }
+}
+
  
     // ✅ 一括保存（1ヶ月分）
     public function saveAll(Request $request)
