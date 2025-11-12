@@ -104,10 +104,6 @@
         <a href="{{ route('company.shift.calendar.edit', ['company' => $company->id]) }}" class="btn btn-primary m-2">
             ✏️ シフト編集（確定側）
         </a>
-
-        <a href="{{ route('company.shift.delete.page', ['company' => $company->id]) }}" class="btn btn-danger m-2">
-            ❌ シフト削除
-        </a>
       </div>
     </div>
   </div>
