@@ -3,10 +3,14 @@
 @section('title', $company->name . ' のユーザー一覧')
 
 @section('content')
-<h1>{{ $company->name }} のユーザー一覧</h1>
+<h1 class="mb-4">👥 {{ $company->name }} のユーザー一覧</h1>
 
-<table class="table mt-4">
-    <thead>
+@if (session('success'))
+    <div class="alert alert-success">{{ session('success') }}</div>
+@endif
+
+<table class="table table-striped align-middle">
+    <thead class="table-light">
         <tr>
             <th>名前</th>
             <th>Email</th>
@@ -15,20 +19,40 @@
         </tr>
     </thead>
     <tbody>
-        @foreach ($users as $user)
+        @forelse ($users as $user)
         <tr>
             <td>{{ $user->name }}</td>
             <td>{{ $user->email }}</td>
-            <td>{{ $user->role }}</td>
             <td>
-                <a href="#" class="btn btn-sm btn-outline-secondary">編集</a>
-                <a href="#" class="btn btn-sm btn-outline-danger">削除</a>
+                @switch($user->role)
+                    @case('super_admin') システム管理者 @break
+                    @case('company_admin') 会社管理者 @break
+                    @default スタッフ
+                @endswitch
+            </td>
+            <td>
+                <a href="{{ route('admin.users.edit', $user->id) }}" class="btn btn-sm btn-outline-secondary">
+                    ✏️ 編集
+                </a>
+
+                <form action="{{ route('admin.users.destroy', $user->id) }}" method="POST"
+                      class="d-inline"
+                      onsubmit="return confirm('{{ $user->name }} さんを削除しますか？');">
+                    @csrf
+                    @method('DELETE')
+                    <button type="submit" class="btn btn-sm btn-outline-danger">🗑️ 削除</button>
+                </form>
             </td>
         </tr>
-        @endforeach
+        @empty
+        <tr>
+            <td colspan="4" class="text-center text-muted py-4">この会社にはユーザーがいません。</td>
+        </tr>
+        @endforelse
     </tbody>
 </table>
 
-<a href="{{ route('admin.users.index') }}" class="btn btn-secondary mt-3">← 会社選択に戻る</a>
-
+<div class="mt-4">
+    <a href="{{ route('admin.users.index') }}" class="btn btn-secondary">← 会社選択に戻る</a>
+</div>
 @endsection

@@ -51,5 +51,29 @@ class AdminUserController extends Controller
 
     return view('admin.users.list', compact('company', 'users'));
 }
+public function edit(User $user)
+{
+    return view('admin.users.edit', compact('user'));
+}
+
+public function update(Request $request, User $user)
+{
+    $validated = $request->validate([
+        'name' => 'required|string|max:255',
+        'email' => 'required|email|unique:users,email,' . $user->id,
+    ]);
+
+    $user->update($validated);
+
+    return redirect()->route('admin.users.index')->with('success', 'ユーザー情報を更新しました。');
+}
+
+public function destroy(User $user)
+{
+    $user->delete();
+
+    return redirect()->route('admin.users.index')->with('success', 'ユーザーを削除しました。');
+}
+
 
 }

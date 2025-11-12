@@ -43,5 +43,29 @@ class AdminCompanyController extends Controller
     return redirect()->route('admin.companies.admin.create', $company->id)
         ->with('success', '会社を作成しました。次に管理者ユーザーを作成してください。');
 }
+public function edit(Company $company)
+{
+    return view('admin.companies.edit', compact('company'));
+}
+
+public function update(Request $request, Company $company)
+{
+    $validated = $request->validate([
+        'name' => 'required|string|max:255',
+        'code' => 'required|string|max:255|unique:companies,code,' . $company->id,
+    ]);
+
+    $company->update($validated);
+
+    return redirect()->route('admin.companies.index')->with('success', '会社情報を更新しました。');
+}
+
+public function destroy(Company $company)
+{
+    $company->delete();
+
+    return redirect()->route('admin.companies.index')->with('success', '会社を削除しました。');
+}
+
 
 }
