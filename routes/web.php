@@ -9,11 +9,19 @@ use App\Http\Controllers\ShiftController;
 use App\Http\Controllers\ShiftApprovalController;
 use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\AttendanceController;
+use App\Http\Controllers\StoreController;
+
+// ★ システム管理者用
+use App\Http\Controllers\Admin\AdminController;
+use App\Http\Controllers\Admin\AdminCompanyController;
+use App\Http\Controllers\Admin\AdminUserController;
+
 
 // ================================
 // LINE Webhook（CSRF除外）
 // ================================
 Route::post('/line/webhook', [LineWebhookController::class, 'webhook']);
+
 
 // ================================
 // 認証不要ルート
@@ -21,32 +29,67 @@ Route::post('/line/webhook', [LineWebhookController::class, 'webhook']);
 Route::get('/login', [AuthController::class, 'showLoginForm'])->name('login');
 Route::post('/login', [AuthController::class, 'login'])->name('login.post');
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
-
 Route::get('/', fn() => redirect('/login'));
 
 // LINEシフトログイン（従業員用）
 Route::get('/shift/login/{line_user_id}', [ShiftController::class, 'loginWithLine'])->name('shift.login');
+
 
 // ================================
 // 認証必須ルート
 // ================================
 Route::middleware(['auth'])->group(function () {
 
-    // -----------------------------
-    // 会社ごとのルート（管理者用）
-    // -----------------------------
+    // ================================
+    // ★ システム管理者ルート
+    // ================================
+    Route::middleware('can:super-admin')
+        ->prefix('admin')
+        ->name('admin.')
+        ->group(function () {
+
+            Route::get('/', [AdminController::class, 'dashboard'])->name('dashboard');
+
+            // 会社管理
+            Route::resource('companies', AdminCompanyController::class);
+
+            // 会社別ユーザー絞り込み
+            Route::get('users/by-company', [AdminUserController::class, 'byCompany'])
+                ->name('users.byCompany');
+
+            // ユーザー管理
+            Route::resource('users', AdminUserController::class);
+        });
+
+
+
+    // ================================
+    // ★ 会社管理者ルート
+    // ================================
     Route::prefix('company/{company}')->name('company.')->group(function () {
 
         // ダッシュボード
         Route::get('/dashboard', [CompanyController::class, 'dashboard'])->name('dashboard');
-
-        // 会社情報更新（締め日など）
         Route::put('/', [CompanyController::class, 'update'])->name('update');
-
-        // recent logs
         Route::get('/recent-logs', [CompanyController::class, 'recentLogs'])->name('recentLogs');
 
+
+        // -----------------------------
+        // 店舗管理
+        // -----------------------------
+        Route::prefix('stores')->name('stores.')->group(function () {
+            Route::get('/', [StoreController::class, 'index'])->name('index');
+            Route::get('/create', [StoreController::class, 'create'])->name('create');
+            Route::post('/', [StoreController::class, 'store'])->name('store');
+            Route::get('/{store}/edit', [StoreController::class, 'edit'])->name('edit');
+            Route::put('/{store}', [StoreController::class, 'update'])->name('update');
+            Route::delete('/{store}', [StoreController::class, 'destroy'])->name('destroy');
+        });
+
+
+        // -----------------------------
         // 社員管理
+        // -----------------------------
         Route::get('/employees', [EmployeeController::class, 'employees'])->name('employees');
         Route::get('/employees/create', [EmployeeController::class, 'createEmployee'])->name('employees.create');
         Route::post('/employees', [EmployeeController::class, 'storeEmployee'])->name('employees.store');
@@ -55,7 +98,10 @@ Route::middleware(['auth'])->group(function () {
         Route::delete('/employees/{employee}', [EmployeeController::class, 'deleteEmployee'])->name('employees.delete');
         Route::put('/employees/{employee}/update-wage', [EmployeeController::class, 'updateWage'])->name('employees.updateWage');
 
+
+        // -----------------------------
         // 勤怠管理
+        // -----------------------------
         Route::get('/attendances', [AttendanceController::class, 'index'])->name('attendances');
         Route::get('/attendances/create', [AttendanceController::class, 'createAttendance'])->name('attendances.create');
         Route::post('/attendances', [AttendanceController::class, 'storeAttendance'])->name('attendances.store');
@@ -63,14 +109,18 @@ Route::middleware(['auth'])->group(function () {
         Route::put('/attendances/{attendance}', [AttendanceController::class, 'updateAttendance'])->name('attendances.update');
         Route::delete('/attendances/{attendance}', [AttendanceController::class, 'destroyAttendance'])->name('attendances.destroy');
 
+
+        // -----------------------------
         // 給与管理
+        // -----------------------------
         Route::get('/payrolls', [PayrollController::class, 'payrolls'])->name('payrolls');
         Route::get('/payrolls/csv', [PayrollController::class, 'payrollsCsv'])->name('payrollsCsv');
         Route::get('/payrolls/pdf', [PayrollController::class, 'payrollsPdf'])->name('payrollsPdf');
         Route::post('/payrolls/recalculate', [PayrollController::class, 'recalculate'])->name('payrolls.recalculate');
 
+
         // -----------------------------
-        // シフト承認フロー（管理者用）
+        // シフト承認フロー
         // -----------------------------
         Route::prefix('shift')->name('shift.')->group(function () {
             Route::get('/requests', [ShiftApprovalController::class, 'index'])->name('requests');
@@ -89,6 +139,7 @@ Route::middleware(['auth'])->group(function () {
             Route::delete('/{id}', [ShiftApprovalController::class, 'destroy'])->name('destroy');
         });
     });
+
 
     // -----------------------------
     // 従業員用シフト提出

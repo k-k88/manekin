@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Facades\Gate;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -20,12 +21,17 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-         //✅ ngrok（https環境）でもHTTPSを強制
+        // ✅ super_admin 権限 Gate
+        Gate::define('super-admin', function ($user) {
+            return $user->role === 'super_admin';
+        });
+
+        // ✅ ngrok（https環境）でもHTTPSを強制
         if (
             config('app.env') === 'production' ||
             str_contains(config('app.url'), 'ngrok-free.dev')
         ) {
-           URL::forceScheme('https');
+            URL::forceScheme('https');
         }
     }
 }

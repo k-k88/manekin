@@ -12,7 +12,7 @@
     <div class="row">
         <!-- 本日の出勤数 -->
         <div class="col-md-4 mb-3">
-            <div class="card shadow-sm">
+            <div class="card shadow-sm text-center">
                 <div class="card-body">
                     <h5 class="card-title">本日の出勤数</h5>
                     <p class="display-6">{{ $today_attendance_count }} 人</p>
@@ -22,7 +22,7 @@
 
         <!-- 登録社員数 -->
         <div class="col-md-4 mb-3">
-            <div class="card shadow-sm">
+            <div class="card shadow-sm text-center">
                 <div class="card-body">
                     <h5 class="card-title">登録社員数</h5>
                     <p class="display-6">{{ $employee_count }} 人</p>
@@ -30,12 +30,15 @@
             </div>
         </div>
 
-        <!-- 店舗数 -->
+        <!-- 登録店舗数 -->
         <div class="col-md-4 mb-3">
-            <div class="card shadow-sm">
+            <div class="card shadow-sm text-center">
                 <div class="card-body">
                     <h5 class="card-title">登録店舗数</h5>
                     <p class="display-6">{{ $store_count }} 店舗</p>
+                    <a href="{{ route('company.stores.index', $company->id) }}" class="btn btn-outline-secondary mt-2">
+                        🏬 店舗管理へ
+                    </a>
                 </div>
             </div>
         </div>
@@ -58,7 +61,6 @@
                     </option>
                 @endfor
             </select>
-
             <button type="submit" class="btn btn-primary">更新</button>
         </div>
     </form>
@@ -79,13 +81,8 @@
         <a href="{{ route('company.employees', $company->id) }}" class="btn btn-primary m-2">👥 社員一覧</a>
         <a href="{{ route('company.attendances', $company->id) }}" class="btn btn-success m-2">🕓 勤怠一覧</a>
         <a href="{{ route('company.payrolls', $company->id) }}" class="btn btn-warning m-2">💰 給与一覧</a>
+        <a href="{{ route('company.shift.requests', $company->id) }}" class="btn btn-info m-2">📨 シフト提出一覧</a>
 
-        {{-- シフト提出状況リンク --}}
-        <a href="{{ route('company.shift.requests', $company->id) }}" class="btn btn-info m-2">
-            📨 シフト提出一覧（承認待ち）
-        </a>
-
-        <!-- シフト調整ボタン -->
         <button type="button" class="btn btn-secondary m-2" data-bs-toggle="modal" data-bs-target="#shiftModal">
             🗓️ シフト調整
         </button>

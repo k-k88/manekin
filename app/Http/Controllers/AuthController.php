@@ -24,13 +24,20 @@ class AuthController extends Controller
         if (Auth::attempt($credentials)) {
             $request->session()->regenerate();
 
-            // 企業管理者のみログイン可能にしたい場合
             $user = Auth::user();
-            if ($user->role !== 'company_admin') {
+
+            // ✅ super_admin または company_admin 以外は弾く
+            if (!in_array($user->role, ['company_admin', 'super_admin'])) {
                 Auth::logout();
-                return back()->withErrors(['email' => '企業管理者のみログインできます。']);
+                return back()->withErrors(['email' => '管理者のみログインできます。']);
             }
 
+            // ✅ super_admin の場合は admin ダッシュボードへ
+            if ($user->role === 'super_admin') {
+                return redirect()->route('admin.dashboard');
+            }
+
+            // ✅ company_admin の場合は会社ダッシュボードへ
             return redirect()->route('company.dashboard', ['company' => $user->company_id]);
         }
 
