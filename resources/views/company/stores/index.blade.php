@@ -11,6 +11,9 @@
     @endif
 
     <div class="mb-3 text-end">
+        <a href="{{ route('company.dashboard', $company->id) }}" class="btn btn-outline-secondary">
+                ← ダッシュボード
+        </a>
         <a href="{{ route('company.stores.create', $company->id) }}" class="btn btn-primary">＋ 店舗追加</a>
     </div>
 

@@ -28,6 +28,14 @@ class Attendance extends Model
         'break_minutes',
     ];
 
+    protected $casts = [
+        'clock_in'   => 'datetime',
+        'clock_out'  => 'datetime',
+        'break_start'=> 'datetime',
+        'break_end'  => 'datetime',
+        'date'       => 'date',
+    ];
+
     // ----------------------------
     // リレーション
     // ----------------------------
@@ -57,17 +65,86 @@ class Attendance extends Model
     // ----------------------------
     // 休憩時間（分）を算出
     // ----------------------------
-    public function calculateBreakMinutes()
+    public function calculateBreakMinutes(): int
     {
         if ($this->break_start && $this->break_end) {
-            $bStart = Carbon::parse($this->date . ' ' . $this->break_start);
-            $bEnd   = Carbon::parse($this->date . ' ' . $this->break_end);
+            $bStart = $this->break_start->copy();
+            $bEnd   = $this->break_end->copy();
+
             if ($bEnd->lessThanOrEqualTo($bStart)) {
                 $bEnd->addDay();
             }
+
             return $bStart->diffInMinutes($bEnd);
         }
+
         return 0;
+    }
+
+    // ----------------------------
+    // 出勤・退勤の表示フォーマット
+    // ----------------------------
+    public function getDisplayClockInAttribute()
+    {
+        return $this->clock_in?->copy()->format('H:i');
+    }
+
+    public function getDisplayClockOutAttribute()
+    {
+        if (!$this->clock_out) return null;
+
+        $clockOut = $this->clock_out->copy();
+        if ($clockOut->lessThanOrEqualTo($this->clock_in)) {
+            $clockOut->addDay();
+        }
+
+        return $clockOut->format('H:i');
+    }
+
+    // ----------------------------
+    // 勤務総分数（休憩除く）
+    // ----------------------------
+    public function getTotalWorkMinutes(): int
+    {
+        if (!$this->clock_in || !$this->clock_out) return 0;
+
+        $clockOut = $this->clock_out->copy();
+        if ($clockOut->lessThanOrEqualTo($this->clock_in)) $clockOut->addDay();
+
+        $breakMinutes = $this->break_minutes ?? $this->calculateBreakMinutes();
+        return $this->clock_in->diffInMinutes($clockOut) - $breakMinutes;
+    }
+
+    // ----------------------------
+    // 深夜勤務分の計算（22:00～翌5:00）
+    // ----------------------------
+    protected function calculateNightMinutes(Carbon $start, Carbon $end): int
+    {
+        $nightStart = $start->copy()->setTime(22, 0);
+        $nightEnd   = $start->copy()->addDay()->setTime(5, 0);
+
+        $overlapStart = $start->max($nightStart);
+        $overlapEnd   = $end->min($nightEnd);
+
+        return $overlapStart->lt($overlapEnd) ? $overlapStart->diffInMinutes($overlapEnd) : 0;
+    }
+
+    // ----------------------------
+    // 勤務時間・給与計算（深夜手当込み）
+    // ----------------------------
+    public function getPayAttribute(): int
+    {
+        if (!$this->clock_in || !$this->clock_out) return 0;
+
+        $totalMinutes = $this->getTotalWorkMinutes();
+        $nightMinutes = $this->calculateNightMinutes($this->clock_in, $this->clock_out);
+        $normalMinutes = max(0, $totalMinutes - $nightMinutes);
+        $hourlyWage = $this->effective_wage;
+
+        $normalPay = ($normalMinutes / 60) * $hourlyWage;
+        $nightPay  = ($nightMinutes / 60) * $hourlyWage * 1.25;
+
+        return (int) round($normalPay + $nightPay);
     }
 
     // ----------------------------
@@ -76,7 +153,9 @@ class Attendance extends Model
     protected static function booted()
     {
         static::saving(function ($attendance) {
-            $attendance->break_minutes = $attendance->calculateBreakMinutes();
+            if ($attendance->break_start && $attendance->break_end) {
+                $attendance->break_minutes = $attendance->calculateBreakMinutes();
+            }
         });
 
         static::saved(function ($attendance) {
@@ -89,55 +168,6 @@ class Attendance extends Model
     }
 
     // ----------------------------
-    // 給与計算（深夜手当込み）
-    // ----------------------------
-    public function getPayAttribute()
-    {
-        if (!$this->clock_in || !$this->clock_out) return 0;
-
-        $clockIn  = Carbon::parse($this->date . ' ' . $this->clock_in);
-        $clockOut = Carbon::parse($this->date . ' ' . $this->clock_out);
-        if ($clockOut->lessThanOrEqualTo($clockIn)) $clockOut->addDay();
-
-        $breakMinutes = $this->break_minutes ?? $this->calculateBreakMinutes();
-        $totalMinutes = $clockIn->diffInMinutes($clockOut) - $breakMinutes;
-
-        $nightPayMinutes = 0;
-        $current = $clockIn->copy();
-        while ($current->lt($clockOut)) {
-            $hour = (int) $current->format('H');
-            if ($hour >= 22 || $hour < 5) $nightPayMinutes++;
-            $current->addMinute();
-        }
-
-        $normalMinutes = max(0, $totalMinutes - $nightPayMinutes);
-        $hourlyWage = $this->effective_wage;
-        $normalPay  = ($normalMinutes / 60) * $hourlyWage;
-        $nightPay   = ($nightPayMinutes / 60) * $hourlyWage * 1.25;
-
-        return round($normalPay + $nightPay);
-    }
-
-    // ----------------------------
-    // 出勤・退勤の表示フォーマット
-    // ----------------------------
-    public function getDisplayClockInAttribute()
-    {
-        return $this->clock_in ? Carbon::parse($this->clock_in)->format('H:i') : null;
-    }
-
-    public function getDisplayClockOutAttribute()
-    {
-        if (!$this->clock_out) return null;
-
-        $clockIn  = Carbon::parse($this->clock_in);
-        $clockOut = Carbon::parse($this->clock_out);
-        if ($clockOut->lessThanOrEqualTo($clockIn)) $clockOut->addDay();
-
-        return $clockOut->format('H:i');
-    }
-
-    // ----------------------------
     // 月ごとの給与再計算処理
     // ----------------------------
     protected static function recalculatePayroll($userId, $companyId, $targetDate)
@@ -147,19 +177,19 @@ class Attendance extends Model
         $user = User::find($userId);
         if (!$user) return;
 
-        $month = Carbon::parse($targetDate)->startOfMonth();
+        $monthStart = Carbon::parse($targetDate)->startOfMonth();
 
         $records = self::where('user_id', $userId)
             ->where('company_id', $companyId)
-            ->whereMonth('date', $month->month)
-            ->whereYear('date', $month->year)
+            ->whereMonth('date', $monthStart->month)
+            ->whereYear('date', $monthStart->year)
             ->whereNotNull('clock_in')
             ->whereNotNull('clock_out')
             ->get();
 
         if ($records->isEmpty()) {
             Payroll::where('user_id', $userId)
-                ->where('month', $month->toDateString())
+                ->where('month', $monthStart->format('Y-m'))
                 ->delete();
             return;
         }
@@ -169,39 +199,28 @@ class Attendance extends Model
         $hourlyWage = 0;
 
         foreach ($records as $record) {
-            $clockIn  = Carbon::parse($record->date . ' ' . $record->clock_in);
-            $clockOut = Carbon::parse($record->date . ' ' . $record->clock_out);
-            if ($clockOut->lessThanOrEqualTo($clockIn)) $clockOut->addDay();
-
-            $breakMinutes = $record->break_minutes ?? $record->calculateBreakMinutes();
-            $totalMinutes = $clockIn->diffInMinutes($clockOut) - $breakMinutes;
-
-            $nightMinutes = 0;
-            $current = $clockIn->copy();
-            while ($current->lt($clockOut)) {
-                $hour = (int) $current->format('H');
-                if ($hour >= 22 || $hour < 5) $nightMinutes++;
-                $current->addMinute();
-            }
+            $totalMinutes = $record->getTotalWorkMinutes();
+            $nightMinutes = $record->calculateNightMinutes($record->clock_in, $record->clock_out);
+            $normalMinutes = max(0, $totalMinutes - $nightMinutes);
 
             $hourlyWage = $record->effective_wage ?? $record->hourly_wage ?? 0;
 
-            $normalPay = (($totalMinutes - $nightMinutes) / 60) * $hourlyWage;
+            $normalPay = ($normalMinutes / 60) * $hourlyWage;
             $nightPay  = ($nightMinutes / 60) * $hourlyWage * 1.25;
 
             $totalHours += $totalMinutes / 60;
             $totalPay   += $normalPay + $nightPay;
         }
 
-        Payroll::updateOrCreate(
-            ['user_id' => $userId, 'month' => $month->toDateString()],
-            [
-                'company_id'   => $companyId,
-                'total_hours'  => round($totalHours, 2),
-                'hourly_wage'  => $hourlyWage,
-                'total_pay'    => round($totalPay),
-                'attendance_id'=> null,
-            ]
-        );
+       Payroll::updateOrCreate(
+           ['user_id' => $userId, 'month' => $monthStart->format('Y-m-01')],
+           [
+               'company_id'   => $companyId,
+               'total_hours'  => round($totalHours, 2),
+               'hourly_wage'  => $hourlyWage,
+               'total_pay'    => round($totalPay),
+               'attendance_id'=> null,
+           ]
+       );
     }
 }
