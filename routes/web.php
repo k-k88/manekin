@@ -152,3 +152,14 @@ Route::middleware(['auth'])->group(function () {
         Route::delete('/{shift}', [ShiftController::class, 'delete'])->name('delete');
     });
 });
+
+// ================================
+// 勤怠管理（休憩終了ボタン用）
+// ================================
+Route::middleware(['auth'])->group(function () {
+    Route::prefix('attendance')->name('attendance.')->group(function () {
+        // 休憩終了ボタン
+        Route::post('/break-end/{attendance}', [AttendanceController::class, 'breakEnd'])
+            ->name('breakEnd');
+    });
+});

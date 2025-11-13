@@ -1,5 +1,5 @@
 @extends('layouts.app')
- 
+
 @section('content')
 <div class="container mt-4">
     <h2 class="mb-4">💰 {{ $company->name }} 給与一覧</h2>
@@ -57,34 +57,32 @@
         <tbody>
             @forelse ($attendances as $attendance)
                 @php
-                    $clockIn  = $attendance->clock_in ? \Carbon\Carbon::parse($attendance->date . ' ' . $attendance->clock_in) : null;
-                    $clockOut = $attendance->clock_out ? \Carbon\Carbon::parse($attendance->date . ' ' . $attendance->clock_out) : null;
-                    $breakStart = $attendance->break_start ? \Carbon\Carbon::parse($attendance->date . ' ' . $attendance->break_start) : null;
-                    $breakEnd   = $attendance->break_end   ? \Carbon\Carbon::parse($attendance->date . ' ' . $attendance->break_end) : null;
+                    // キャスト済みCarbonを使用
+                    $clockIn  = $attendance->clock_in;
+                    $clockOut = $attendance->clock_out;
+                    $breakStart = $attendance->break_start;
+                    $breakEnd   = $attendance->break_end;
 
                     // 日跨ぎ対応
                     if($clockIn && $clockOut && $clockOut->lessThanOrEqualTo($clockIn)) {
-                        $clockOut->addDay();
+                        $clockOut = $clockOut->copy()->addDay();
                     }
                     if($breakStart && $breakEnd && $breakEnd->lessThan($breakStart)) {
-                        $breakEnd->addDay();
+                        $breakEnd = $breakEnd->copy()->addDay();
                     }
 
                     $displayIn  = $clockIn ? $clockIn->format('H:i') : '-';
                     $displayOut = $clockOut ? $clockOut->format('H:i') : '-';
 
+                    // 勤務時間計算
                     $workMinutes = 0;
                     $breakMinutes = 0;
-
                     if($clockIn && $clockOut){
                         $workMinutes = $clockIn->diffInMinutes($clockOut);
-
                         if($breakStart && $breakEnd){
                             $breakMinutes = $breakStart->diffInMinutes($breakEnd);
                         }
-
-                        $workMinutes -= $breakMinutes;
-                        $workMinutes = max(0, $workMinutes);
+                        $workMinutes = max(0, $workMinutes - $breakMinutes);
                     }
 
                     $workHours = round($workMinutes / 60, 2);
@@ -116,19 +114,19 @@
     @if($attendances->count())
         @php
             $totalPay = $attendances->sum(function($a){
-                $clockIn  = $a->clock_in ? \Carbon\Carbon::parse($a->date . ' ' . $a->clock_in) : null;
-                $clockOut = $a->clock_out ? \Carbon\Carbon::parse($a->date . ' ' . $a->clock_out) : null;
-                $breakStart = $a->break_start ? \Carbon\Carbon::parse($a->date . ' ' . $a->break_start) : null;
-                $breakEnd   = $a->break_end   ? \Carbon\Carbon::parse($a->date . ' ' . $a->break_end) : null;
+                $clockIn  = $a->clock_in;
+                $clockOut = $a->clock_out;
+                $breakStart = $a->break_start;
+                $breakEnd   = $a->break_end;
 
-                if($clockIn && $clockOut && $clockOut->lessThanOrEqualTo($clockIn)) $clockOut->addDay();
-                if($breakStart && $breakEnd && $breakEnd->lessThan($breakStart)) $breakEnd->addDay();
+                if($clockIn && $clockOut && $clockOut->lessThanOrEqualTo($clockIn)) $clockOut = $clockOut->copy()->addDay();
+                if($breakStart && $breakEnd && $breakEnd->lessThan($breakStart)) $breakEnd = $breakEnd->copy()->addDay();
 
                 $workMinutes = $clockIn && $clockOut ? $clockIn->diffInMinutes($clockOut) : 0;
                 $breakMinutes = $breakStart && $breakEnd ? $breakStart->diffInMinutes($breakEnd) : 0;
 
                 $worked = max(0, $workMinutes - $breakMinutes);
-                return round($worked/60 * ($a->effective_wage ?? 0));
+                return round($worked / 60 * ($a->effective_wage ?? 0));
             });
         @endphp
         <div class="mt-3 text-end fw-bold">

@@ -14,7 +14,7 @@
         </div>
     </div>
 
-    {{-- 🔹 メッセージ表示 --}}
+    {{-- メッセージ表示 --}}
     @if (session('success'))
         <div class="alert alert-success alert-dismissible fade show shadow-sm" role="alert">
             <i class="bi bi-check-circle me-2"></i>{{ session('success') }}
@@ -40,7 +40,7 @@
         </div>
     @endif
 
-    {{-- 🔹 フィルター --}}
+    {{-- フィルター --}}
     <div class="card shadow-sm mb-4 border-0">
         <div class="card-body">
             <form method="GET" class="row g-2 align-items-center">
@@ -67,7 +67,7 @@
         </div>
     </div>
 
-    {{-- 🔹 勤怠一覧テーブル --}}
+    {{-- 勤怠一覧テーブル --}}
     <div class="card shadow-sm border-0">
         <div class="card-body p-0">
             <div class="table-responsive" style="max-height: 70vh;">
@@ -92,15 +92,9 @@
                                 $clockOut   = $attendance->clock_out ? \Carbon\Carbon::parse($attendance->clock_out)  : null;
                                 $breakStart = $attendance->break_start ? \Carbon\Carbon::parse($attendance->break_start) : null;
                                 $breakEnd   = $attendance->break_end   ? \Carbon\Carbon::parse($attendance->break_end)   : null;
-                                $displayClockIn  = $clockIn  ? $clockIn->format('H:i')  : '';
-                                $displayClockOut = '';
-                                if ($attendance->clock_out) {
-                                    $outHour = (int)substr($attendance->clock_out, 0, 2);
-                                    $outMin  = (int)substr($attendance->clock_out, 3, 2);
-                                    $displayClockOut = $outHour >= 24
-                                        ? sprintf('%02d:%02d', $outHour - 24, $outMin)
-                                        : sprintf('%02d:%02d', $outHour, $outMin);
-                                }
+
+                                $displayClockIn    = $clockIn    ? $clockIn->format('H:i') : '';
+                                $displayClockOut   = $clockOut   ? $clockOut->format('H:i') : '';
                                 $displayBreakStart = $breakStart ? $breakStart->format('H:i') : '';
                                 $displayBreakEnd   = $breakEnd   ? $breakEnd->format('H:i')   : '';
                             @endphp
@@ -119,31 +113,17 @@
                                     <td><input type="text" name="break_end" class="form-control form-control-sm time-input" value="{{ $displayBreakEnd }}"></td>
 
                                     <td>
-                                        @if ($clockIn && $attendance->clock_out)
+                                        @if ($clockIn && $clockOut)
                                             @php
-                                                $outHourInt = (int)substr($attendance->clock_out, 0, 2);
-                                                $outMinuteInt = (int)substr($attendance->clock_out, 3, 2);
-                                                $calcOut = $clockIn->copy();
-
-                                                if ($outHourInt >= 24) {
-                                                    $calcOut->addDay()->setTime($outHourInt - 24, $outMinuteInt);
-                                                } else {
-                                                    $calcOut->setTime($outHourInt, $outMinuteInt);
-                                                    if ($calcOut->lessThanOrEqualTo($clockIn)) $calcOut->addDay();
-                                                }
-
-                                                $breakMin = 0;
+                                                $breakMinutes = 0;
                                                 if ($breakStart && $breakEnd) {
                                                     $bS = $breakStart->copy();
-                                                    if ($breakStart->format('H') >= 24) $bS->addDay();
                                                     $bE = $breakEnd->copy();
-                                                    if ($breakEnd->format('H') >= 24) $bE->addDay();
-                                                    if ($bE->lessThan($bS)) $bE->addDay();
-                                                    $breakMin = $bS->diffInMinutes($bE);
+                                                    $breakMinutes = $bS->diffInMinutes($bE);
                                                 }
-                                                $hours = ($clockIn->diffInMinutes($calcOut) - $breakMin) / 60;
+                                                $workedHours = ($clockIn->diffInMinutes($clockOut) - $breakMinutes) / 60;
                                             @endphp
-                                            <span class="fw-bold">{{ number_format($hours, 2) }}</span> 時間
+                                            <span class="fw-bold">{{ number_format($workedHours, 2) }}</span> 時間
                                         @else
                                             <span class="text-muted">-</span>
                                         @endif
@@ -185,7 +165,7 @@
     </div>
 </div>
 
-{{-- 🔹 自動フォーマット --}}
+{{-- 自動フォーマット --}}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('.time-input').forEach(input => {

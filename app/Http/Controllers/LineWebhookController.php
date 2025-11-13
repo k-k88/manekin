@@ -6,6 +6,8 @@ use Illuminate\Http\Request;
 use App\Models\User;
 use App\Models\Attendance;
 use App\Models\Company;
+use App\Models\WageHistory;
+use Carbon\Carbon;
 use LINE\Clients\MessagingApi\Api\MessagingApiApi;
 use LINE\Clients\MessagingApi\Configuration;
 use LINE\Clients\MessagingApi\Model\ReplyMessageRequest;
@@ -14,201 +16,187 @@ use LINE\Clients\MessagingApi\Model\FlexMessage;
 
 class LineWebhookController extends Controller
 {
+    protected MessagingApiApi $api;
+
+    public function __construct()
+    {
+        $config = Configuration::getDefaultConfiguration()
+            ->setAccessToken(env('LINE_CHANNEL_ACCESS_TOKEN'));
+        $this->api = new MessagingApiApi(null, $config);
+    }
+
     public function webhook(Request $request)
     {
         $events = $request->input('events', []);
-        if (empty($events)) {
-            return response('No events', 200);
-        }
-
-        $config = Configuration::getDefaultConfiguration()
-            ->setAccessToken(env('LINE_CHANNEL_ACCESS_TOKEN'));
-        $api = new MessagingApiApi(null, $config);
+        if (empty($events)) return response('No events', 200);
 
         foreach ($events as $event) {
             $replyToken = $event['replyToken'] ?? null;
-            $userId = $event['source']['userId'] ?? null;
-            $text = trim($event['message']['text'] ?? '');
-            $replyText = null; // 初期値をnullにしておく
+            $userId     = $event['source']['userId'] ?? null;
+            $text       = trim($event['message']['text'] ?? '');
+            $replyText  = null;
 
-            // 🔹 登録コマンド（例：登録 ABC123 5）
+            $user = User::where('line_user_id', $userId)->first();
+
+            // -----------------------------
+            // 登録
+            // -----------------------------
             if (preg_match('/^登録\s+([A-Za-z0-9]+)\s+(\d+)$/u', $text, $match)) {
-                $companyCode = $match[1];
-                $employeeId = $match[2];
-                $company = Company::where('code', $companyCode)->first();
-
-                if (!$company) {
-                    $replyText = "⚠️ 企業コード「{$companyCode}」は存在しません。";
-                } else {
-                    $user = User::where('id', $employeeId)
-                        ->where('company_id', $company->id)
-                        ->first();
-
-                    if ($user) {
-                        $user->line_user_id = $userId;
-                        $user->save();
-                        $replyText = "✅ {$company->name} の社員ID {$employeeId} を登録しました。";
-                    } else {
-                        $replyText = "⚠️ 該当する社員IDが見つかりません。";
-                    }
-                }
+                $replyText = $this->handleRegistration($match[1], $match[2], $userId);
+                $user = User::where('line_user_id', $userId)->first(); // 更新後取得
             }
 
-            // 🔹 出勤コマンド
-            elseif ($text === '出勤') {
-                $user = User::where('line_user_id', $userId)->first();
-                if (!$user) {
-                    $replyText = "⚠️ 登録がまだです。「登録 [企業コード] [社員ID]」を送ってください。";
-                } else {
-                    $attendance = Attendance::firstOrCreate(
-                        ['user_id' => $user->id, 'date' => now()->toDateString()],
-                        ['store_id' => $user->store_id, 
-                        'company_id' => $user->company_id,
-                        ]
-                    );
-
-                    if (!$attendance->clock_in) {
-                        $attendance->clock_in = now();
-                        $attendance->save();
-                        $replyText = "🕒 出勤を記録しました。";
-                    } else {
-                        $replyText = "⚠️ 今日はすでに出勤済みです。";
-                    }
-                }
+            // 登録されていない場合の共通チェック
+            if (!$user && !str_starts_with($text, '登録')) {
+                $replyText = "⚠️ 登録がまだです。\n「登録 [企業コード] [社員ID]」を送ってください。";
             }
 
-            // 🔹 退勤コマンド
-elseif ($text === '退勤') {
-    $user = User::where('line_user_id', $userId)->first();
-    if (!$user) {
-        $replyText = "⚠️ 登録がまだです。「登録 [企業コード] [社員ID]」を送ってください。";
-    } else {
-
-        $attendance = Attendance::where('user_id', $user->id)
-            ->where('date', now()->toDateString())
-            ->first();
-
-        if ($attendance && !$attendance->clock_out) {
-            $attendance->clock_out = now();
-            $attendance->save();
-
-            // ✅ ここから給与計算 -------------------------------------
-
-            // 1) 勤務分数を計算
-            $start = \Carbon\Carbon::parse($attendance->clock_in);
-            $end   = \Carbon\Carbon::parse($attendance->clock_out);
-            $workedMinutes = $end->diffInMinutes($start);
-
-            // 2) 今の時給を取得（WageHistoryの最新レコード）
-           // 2) 今の時給を取得（WageHistoryの最新で、今日以前に有効なもの）
-            $wageHistory = \App\Models\WageHistory::where('user_id', $user->id)
-                ->where('effective_from', '<=', now()) // ← 超重要
-                ->orderByDesc('effective_from')
-                ->first();
-
-            $wage = $wageHistory->hourly_wage ?? 0;
-
-            // 3) 今日の給与を計算
-            $todaySalary = floor(($workedMinutes / 60) * $wage);
-
-            // 4) 今月の累計時間 + 累計給与を集計
-            $monthStart = now()->startOfMonth();
-            $monthEnd = now()->endOfMonth();
-
-            $attendances = Attendance::where('user_id', $user->id)
-                ->whereBetween('date', [$monthStart, $monthEnd])
-                ->whereNotNull('clock_in')
-                ->whereNotNull('clock_out')
-                ->get();
-
-            $totalMinutes = 0;
-            foreach ($attendances as $a) {
-                $totalMinutes += \Carbon\Carbon::parse($a->clock_in)->diffInMinutes(\Carbon\Carbon::parse($a->clock_out));
+            // -----------------------------
+            // 出勤 / 休憩 / 退勤
+            // -----------------------------
+            elseif ($user) {
+                $replyText = $this->handleAttendanceCommand($user, $text);
             }
 
-            $totalSalary = floor(($totalMinutes / 60) * $wage);
-
-            // 分 → 時間:分 表示に変換
-            $h = floor($totalMinutes / 60);
-            $m = $totalMinutes % 60;
-            $workedDisplay = sprintf("%d時間%02d分", $h, $m);
-
-            // ✅ LINEに返信
-            $replyText = "🏁 退勤を記録しました。\n\n"
-                       . "本日の給与：¥" . number_format($todaySalary) . "\n"
-                       . "今月の累計勤務：{$workedDisplay}\n"
-                       . "今月の累計給与：¥" . number_format($totalSalary);
-
-            // ✅ ここまで --------------------------------------------
-
-        } else {
-            $replyText = "⚠️ 出勤していないか、すでに退勤済みです。";
-        }
-    }
-}
-
-
-            // 🔹 シフト登録コマンド
-            elseif ($text === 'シフト登録') {
-                $user = User::where('line_user_id', $userId)->first();
-
-                if (!$user) {
-                    $replyText = "⚠️ 登録がまだです。「登録 [企業コード] [社員ID]」を送ってください。";
-                } else {
-                    // FlexMessage部分だけ抜粋
-$shiftUrl = url("/shift/login/{$userId}");
-$api->replyMessage(new ReplyMessageRequest([
-    'replyToken' => $replyToken,
-    'messages' => [
-        new FlexMessage([
-            'type' => 'flex',
-            'altText' => 'シフト登録はこちら',
-            'contents' => [
-                'type' => 'bubble',
-                'body' => [
-                    'type' => 'box',
-                    'layout' => 'vertical',
-                    'contents' => [
-                        ['type' => 'text', 'text' => '📅 シフト登録', 'weight' => 'bold', 'size' => 'lg'],
-                        ['type' => 'text', 'text' => 'カレンダーでシフトを入力できます。', 'wrap' => true, 'size' => 'sm', 'color' => '#555555'],
-                        [
-                            'type' => 'button',
-                            'style' => 'primary',
-                            'color' => '#1DB446',
-                            'action' => [
-                                'type' => 'uri',
-                                'label' => 'シフト登録ページを開く',
-                                'uri' => $shiftUrl,
-                            ]
-                        ]
-                    ]
-                ]
-            ]
-        ])
-    ]
-]));
-
-                    continue; // ✅ このあとでTextMessageを送らない
-                }
+            // -----------------------------
+            // シフト登録
+            // -----------------------------
+            elseif ($text === 'シフト登録' && $user) {
+                $this->replyFlexMessage($replyToken, '📅 シフト登録', 'カレンダーでシフトを入力できます。', url("/shift/login/{$userId}"));
+                continue;
             }
 
-            // 🔹 それ以外のメッセージ
-            else {
-                $replyText = "不明なコマンドです。\n\n🟢利用できるコマンド\n・登録 [企業コード] [社員ID]\n・出勤\n・退勤\n・シフト登録";
+            // -----------------------------
+            // 不明コマンド
+            // -----------------------------
+            if (!$replyText) {
+                $replyText = "不明なコマンドです。\n\n🟢利用できるコマンド\n"
+                           . "・登録 [企業コード] [社員ID]\n"
+                           . "・出勤\n"
+                           . "・休憩開始\n"
+                           . "・休憩終了\n"
+                           . "・退勤\n"
+                           . "・シフト登録";
             }
 
-            // 🔹 通常メッセージを返信
+            // -----------------------------
+            // メッセージ返信
+            // -----------------------------
             if ($replyToken && $replyText) {
-                $api->replyMessage(new ReplyMessageRequest([
-                    'replyToken' => $replyToken,
-                    'messages' => [new TextMessage([
-                        'type' => 'text',
-                        'text' => $replyText,
-                    ])],
-                ]));
+                $this->replyTextMessage($replyToken, $replyText);
             }
         }
 
         return response('OK', 200);
+    }
+
+    // =================================================
+    // 登録処理
+    // =================================================
+    protected function handleRegistration(string $companyCode, string $employeeId, string $lineUserId): string
+    {
+        $company = Company::where('code', $companyCode)->first();
+        if (!$company) return "⚠️ 企業コード「{$companyCode}」は存在しません。";
+
+        $user = User::where('id', $employeeId)
+            ->where('company_id', $company->id)
+            ->first();
+
+        if ($user) {
+            $user->line_user_id = $lineUserId;
+            $user->save();
+            return "✅ {$company->name} の社員ID {$employeeId} を登録しました。";
+        }
+
+        return "⚠️ 該当する社員IDが見つかりません。";
+    }
+
+    // =================================================
+    // 出勤 / 休憩 / 退勤
+    // =================================================
+    protected function handleAttendanceCommand(User $user, string $command): ?string
+    {
+        $today = now()->toDateString();
+        $attendance = Attendance::firstOrNew(['user_id' => $user->id, 'date' => $today]);
+        $attendance->store_id ??= $user->store_id;
+        $attendance->company_id ??= $user->company_id;
+
+        switch ($command) {
+            case '出勤':
+                if ($attendance->clock_in) return "⚠️ 今日はすでに出勤済みです。";
+                $attendance->clock_in = now();
+                $attendance->save();
+                return "🕒 出勤を記録しました。";
+
+            case '休憩開始':
+                if (!$attendance->clock_in) return "⚠️ 出勤データがありません。まず「出勤」を送ってください。";
+                if ($attendance->break_start) return "⚠️ すでに休憩を開始しています。";
+                $attendance->break_start = now();
+                $attendance->break_end = null;
+                $attendance->save();
+                return "☕ 休憩開始を記録しました。\n開始時刻：" . $attendance->break_start->format('H:i:s');
+
+            case '休憩終了':
+                if (!$attendance->break_start) return "⚠️ 休憩開始の記録がありません。";
+                if ($attendance->break_end) return "⚠️ すでに休憩終了済みです。";
+                $attendance->break_end = now();
+                $attendance->break_minutes = $attendance->calculateBreakMinutes();
+                $attendance->save();
+                return "✅ 休憩終了を記録しました。\n休憩時間：" . $attendance->break_minutes . "分\n終了時刻：" . $attendance->break_end->format('H:i:s');
+
+            case '退勤':
+                if (!$attendance->clock_in || $attendance->clock_out) return "⚠️ 出勤していないか、すでに退勤済みです。";
+                $attendance->clock_out = now();
+                $attendance->save();
+                return "🏁 退勤を記録しました。\n本日の給与：¥" . number_format($attendance->pay);
+
+            default:
+                return null;
+        }
+    }
+
+    // =================================================
+    // LINE 返信共通
+    // =================================================
+    protected function replyTextMessage(string $replyToken, string $text)
+    {
+        $this->api->replyMessage(new ReplyMessageRequest([
+            'replyToken' => $replyToken,
+            'messages' => [new TextMessage(['type' => 'text', 'text' => $text])],
+        ]));
+    }
+
+    protected function replyFlexMessage(string $replyToken, string $title, string $desc, string $url)
+    {
+        $this->api->replyMessage(new ReplyMessageRequest([
+            'replyToken' => $replyToken,
+            'messages' => [
+                new FlexMessage([
+                    'type' => 'flex',
+                    'altText' => $title,
+                    'contents' => [
+                        'type' => 'bubble',
+                        'body' => [
+                            'type' => 'box',
+                            'layout' => 'vertical',
+                            'contents' => [
+                                ['type' => 'text', 'text' => $title, 'weight' => 'bold', 'size' => 'lg'],
+                                ['type' => 'text', 'text' => $desc, 'wrap' => true, 'size' => 'sm', 'color' => '#555555'],
+                                [
+                                    'type' => 'button',
+                                    'style' => 'primary',
+                                    'color' => '#1DB446',
+                                    'action' => [
+                                        'type' => 'uri',
+                                        'label' => 'シフト登録ページを開く',
+                                        'uri' => $url,
+                                    ]
+                                ]
+                            ]
+                        ]
+                    ]
+                ])
+            ]
+        ]));
     }
 }
