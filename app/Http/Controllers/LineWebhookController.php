@@ -6,7 +6,6 @@ use Illuminate\Http\Request;
 use App\Models\User;
 use App\Models\Attendance;
 use App\Models\Company;
-use App\Models\WageHistory;
 use Carbon\Carbon;
 use LINE\Clients\MessagingApi\Api\MessagingApiApi;
 use LINE\Clients\MessagingApi\Configuration;
@@ -32,50 +31,60 @@ class LineWebhookController extends Controller
 
         foreach ($events as $event) {
             $replyToken = $event['replyToken'] ?? null;
-            $userId     = $event['source']['userId'] ?? null;
+            $lineUserId = $event['source']['userId'] ?? null;
             $text       = trim($event['message']['text'] ?? '');
             $replyText  = null;
 
-            $user = User::where('line_user_id', $userId)->first();
-
-            // ================================
-            // 登録コマンド
-            // ================================
-            if (preg_match('/^登録\s+([A-Za-z0-9]+)\s+(\d+)$/u', $text, $match)) {
-                $replyText = $this->handleRegistration($match[1], $match[2], $userId);
-                $user = User::where('line_user_id', $userId)->first(); // 登録後再取得
+            // ==============================
+            // 🔹 登録
+            // ==============================
+            if (preg_match('/^登録\s+([A-Za-z0-9]+)\s+(\d+)$/u', $text, $m)) {
+                $replyText = $this->handleRegistration($m[1], $m[2], $lineUserId);
+                $this->maybeReplyText($replyToken, $replyText);
+                continue;
             }
 
-            // ================================
-            // 登録前のガード
-            // ================================
-            if (!$user && !str_starts_with($text, '登録')) {
+            // ==============================
+            // 🔹 登録済ユーザー確認
+            // ==============================
+            $user = User::where('line_user_id', $lineUserId)->first();
+            if (!$user) {
                 $replyText = "⚠️ 登録がまだです。\n「登録 [企業コード] [社員ID]」を送ってください。";
+                $this->maybeReplyText($replyToken, $replyText);
+                continue;
             }
 
-            // ================================
-            // ✅ シフト登録（出勤コマンドより前に判定）
-            // ================================
-            elseif ($text === 'シフト登録' && $user) {
+            // ==============================
+            // 🔹 シフト登録
+            // ==============================
+            if ($text === 'シフト登録') {
                 $this->replyFlexMessage(
                     $replyToken,
                     '📅 シフト登録',
                     "{$user->name}さん、以下のボタンからシフトを登録できます！",
-                    url("/shift/login/{$userId}")
+                    url("/shift/login/{$lineUserId}")
                 );
                 continue;
             }
 
-            // ================================
-            // 出勤 / 休憩 / 退勤
-            // ================================
-            elseif ($user) {
-                $replyText = $this->handleAttendanceCommand($user, $text);
+            // ==============================
+            // 🔹 給与計算（月次サマリ）
+            // ==============================
+            if ($text === '給与計算') {
+                [$workedDisplay, $hourly, $totalPay] = $this->calcMonthlySummary($user);
+                $replyText = "💰 今月の給与情報\n\n"
+                           . "勤務時間：{$workedDisplay}\n"
+                           . "時給：¥" . number_format($hourly) . "\n"
+                           . "合計給与：¥" . number_format($totalPay);
+                $this->maybeReplyText($replyToken, $replyText);
+                continue;
             }
 
-            // ================================
-            // 不明コマンド
-            // ================================
+            // ==============================
+            // 🔹 出勤 / 休憩 / 退勤
+            // ==============================
+            $replyText = $this->handleAttendanceCommand($user, $text);
+
             if (!$replyText) {
                 $replyText = "不明なコマンドです。\n\n🟢利用できるコマンド\n"
                            . "・登録 [企業コード] [社員ID]\n"
@@ -83,23 +92,19 @@ class LineWebhookController extends Controller
                            . "・休憩開始\n"
                            . "・休憩終了\n"
                            . "・退勤\n"
-                           . "・シフト登録";
+                           . "・シフト登録\n"
+                           . "・給与計算";
             }
 
-            // ================================
-            // LINEへ返信
-            // ================================
-            if ($replyToken && $replyText) {
-                $this->replyTextMessage($replyToken, $replyText);
-            }
+            $this->maybeReplyText($replyToken, $replyText);
         }
 
         return response('OK', 200);
     }
 
-    // =================================================
+    // =====================================================
     // 登録処理
-    // =================================================
+    // =====================================================
     protected function handleRegistration(string $companyCode, string $employeeId, string $lineUserId): string
     {
         $company = Company::where('code', $companyCode)->first();
@@ -109,23 +114,24 @@ class LineWebhookController extends Controller
             ->where('company_id', $company->id)
             ->first();
 
-        if ($user) {
-            $user->line_user_id = $lineUserId;
-            $user->save();
-            return "✅ {$company->name} の社員ID {$employeeId} を登録しました。";
-        }
+        if (!$user) return "⚠️ 該当する社員IDが見つかりません。";
 
-        return "⚠️ 該当する社員IDが見つかりません。";
+        $user->line_user_id = $lineUserId;
+        $user->save();
+
+        return "✅ {$company->name} の社員ID {$employeeId} を登録しました。";
     }
 
-    // =================================================
+    // =====================================================
     // 出勤 / 休憩 / 退勤 処理
-    // =================================================
+    // =====================================================
     protected function handleAttendanceCommand(User $user, string $command): ?string
     {
         $today = now()->toDateString();
+
+        /** @var Attendance $attendance */
         $attendance = Attendance::firstOrNew(['user_id' => $user->id, 'date' => $today]);
-        $attendance->store_id ??= $user->store_id;
+        $attendance->store_id   ??= $user->store_id;
         $attendance->company_id ??= $user->company_id;
 
         switch ($command) {
@@ -142,7 +148,7 @@ class LineWebhookController extends Controller
                 if ($attendance->break_start)
                     return "⚠️ すでに休憩を開始しています。";
                 $attendance->break_start = now();
-                $attendance->break_end = null;
+                $attendance->break_end   = null;
                 $attendance->save();
                 return "☕ 休憩開始を記録しました。\n開始時刻：" . $attendance->break_start->format('H:i');
 
@@ -151,7 +157,7 @@ class LineWebhookController extends Controller
                     return "⚠️ 休憩開始の記録がありません。";
                 if ($attendance->break_end)
                     return "⚠️ すでに休憩終了済みです。";
-                $attendance->break_end = now();
+                $attendance->break_end     = now();
                 $attendance->break_minutes = $attendance->calculateBreakMinutes();
                 $attendance->save();
                 return "✅ 休憩終了を記録しました。\n休憩時間：" . $attendance->break_minutes . "分";
@@ -164,35 +170,78 @@ class LineWebhookController extends Controller
 
                 $attendance->clock_out = now();
 
-                // ✅ 休憩時間を確実に反映
                 if ($attendance->break_start && $attendance->break_end) {
                     $attendance->break_minutes = $attendance->calculateBreakMinutes();
                 }
-
                 $attendance->save();
 
-                // ✅ 給与テーブルをリアルタイム更新
-                \App\Models\Attendance::recalculatePayroll(
-                    $attendance->user_id,
-                    $attendance->company_id,
-                    $attendance->date
-                );
+                // 🔹 本日分給与（深夜手当・休憩控除済み）
+                $todayPay = (int) $attendance->pay;
+                $workedMin = $attendance->getTotalWorkMinutes();
+                $h = intdiv($workedMin, 60);
+                $m = $workedMin % 60;
+                $todayWorked = sprintf("%d時間%02d分", $h, $m);
 
-                return "🏁 退勤を記録しました。\n本日の給与：¥" . number_format($attendance->pay);
+                // 🔹 月次サマリ
+                [$workedDisplay, $hourly, $totalPay] = $this->calcMonthlySummary($user);
+
+                return "🏁 退勤を記録しました。\n"
+                     . "本日の勤務：{$todayWorked}\n"
+                     . "本日の給与：¥" . number_format($todayPay) . "\n\n"
+                     . "【今月サマリ】\n"
+                     . "勤務時間：{$workedDisplay}\n"
+                     . "時給：¥" . number_format($hourly) . "\n"
+                     . "合計給与：¥" . number_format($totalPay);
 
             default:
                 return null;
         }
     }
 
-    // =================================================
-    // LINE 返信共通
-    // =================================================
-    protected function replyTextMessage(string $replyToken, string $text)
+    // =====================================================
+    // 月次給与サマリ（深夜手当込み）
+    // =====================================================
+    protected function calcMonthlySummary(User $user): array
     {
+        $monthStart = now()->startOfMonth()->toDateString();
+        $monthEnd   = now()->endOfMonth()->toDateString();
+
+        $attendances = Attendance::where('user_id', $user->id)
+            ->whereBetween('date', [$monthStart, $monthEnd])
+            ->whereNotNull('clock_in')
+            ->whereNotNull('clock_out')
+            ->get();
+
+        $totalMinutes = 0;
+        $totalPay = 0;
+        $lastHourly = 0;
+
+        foreach ($attendances as $a) {
+            $totalMinutes += $a->getTotalWorkMinutes();
+            $totalPay     += (int) $a->pay;
+            $lastHourly    = $a->effective_wage ?? 0;
+        }
+
+        $hours = intdiv($totalMinutes, 60);
+        $mins  = $totalMinutes % 60;
+        $workedDisplay = sprintf("%d時間%02d分", $hours, $mins);
+
+        return [$workedDisplay, $lastHourly, (int) round($totalPay)];
+    }
+
+    // =====================================================
+    // LINE返信共通関数
+    // =====================================================
+    protected function maybeReplyText(?string $replyToken, ?string $text): void
+    {
+        if (!$replyToken || !$text) return;
+
         $this->api->replyMessage(new ReplyMessageRequest([
             'replyToken' => $replyToken,
-            'messages' => [new TextMessage(['type' => 'text', 'text' => $text])],
+            'messages'   => [new TextMessage([
+                'type' => 'text',
+                'text' => $text
+            ])],
         ]));
     }
 
