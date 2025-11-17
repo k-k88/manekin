@@ -38,37 +38,44 @@ class LineWebhookController extends Controller
 
             $user = User::where('line_user_id', $userId)->first();
 
-            // -----------------------------
-            // 登録
-            // -----------------------------
+            // ================================
+            // 登録コマンド
+            // ================================
             if (preg_match('/^登録\s+([A-Za-z0-9]+)\s+(\d+)$/u', $text, $match)) {
                 $replyText = $this->handleRegistration($match[1], $match[2], $userId);
-                $user = User::where('line_user_id', $userId)->first(); // 更新後取得
+                $user = User::where('line_user_id', $userId)->first(); // 登録後再取得
             }
 
-            // 登録されていない場合の共通チェック
+            // ================================
+            // 登録前のガード
+            // ================================
             if (!$user && !str_starts_with($text, '登録')) {
                 $replyText = "⚠️ 登録がまだです。\n「登録 [企業コード] [社員ID]」を送ってください。";
             }
 
-            // -----------------------------
+            // ================================
+            // ✅ シフト登録（出勤コマンドより前に判定）
+            // ================================
+            elseif ($text === 'シフト登録' && $user) {
+                $this->replyFlexMessage(
+                    $replyToken,
+                    '📅 シフト登録',
+                    "{$user->name}さん、以下のボタンからシフトを登録できます！",
+                    url("/shift/login/{$userId}")
+                );
+                continue;
+            }
+
+            // ================================
             // 出勤 / 休憩 / 退勤
-            // -----------------------------
+            // ================================
             elseif ($user) {
                 $replyText = $this->handleAttendanceCommand($user, $text);
             }
 
-            // -----------------------------
-            // シフト登録
-            // -----------------------------
-            elseif ($text === 'シフト登録' && $user) {
-                $this->replyFlexMessage($replyToken, '📅 シフト登録', 'カレンダーでシフトを入力できます。', url("/shift/login/{$userId}"));
-                continue;
-            }
-
-            // -----------------------------
+            // ================================
             // 不明コマンド
-            // -----------------------------
+            // ================================
             if (!$replyText) {
                 $replyText = "不明なコマンドです。\n\n🟢利用できるコマンド\n"
                            . "・登録 [企業コード] [社員ID]\n"
@@ -79,9 +86,9 @@ class LineWebhookController extends Controller
                            . "・シフト登録";
             }
 
-            // -----------------------------
-            // メッセージ返信
-            // -----------------------------
+            // ================================
+            // LINEへ返信
+            // ================================
             if ($replyToken && $replyText) {
                 $this->replyTextMessage($replyToken, $replyText);
             }
@@ -112,7 +119,7 @@ class LineWebhookController extends Controller
     }
 
     // =================================================
-    // 出勤 / 休憩 / 退勤
+    // 出勤 / 休憩 / 退勤 処理
     // =================================================
     protected function handleAttendanceCommand(User $user, string $command): ?string
     {
@@ -123,31 +130,54 @@ class LineWebhookController extends Controller
 
         switch ($command) {
             case '出勤':
-                if ($attendance->clock_in) return "⚠️ 今日はすでに出勤済みです。";
+                if ($attendance->clock_in)
+                    return "⚠️ 今日はすでに出勤済みです。";
                 $attendance->clock_in = now();
                 $attendance->save();
                 return "🕒 出勤を記録しました。";
 
             case '休憩開始':
-                if (!$attendance->clock_in) return "⚠️ 出勤データがありません。まず「出勤」を送ってください。";
-                if ($attendance->break_start) return "⚠️ すでに休憩を開始しています。";
+                if (!$attendance->clock_in)
+                    return "⚠️ 出勤データがありません。まず「出勤」を送ってください。";
+                if ($attendance->break_start)
+                    return "⚠️ すでに休憩を開始しています。";
                 $attendance->break_start = now();
                 $attendance->break_end = null;
                 $attendance->save();
-                return "☕ 休憩開始を記録しました。\n開始時刻：" . $attendance->break_start->format('H:i:s');
+                return "☕ 休憩開始を記録しました。\n開始時刻：" . $attendance->break_start->format('H:i');
 
             case '休憩終了':
-                if (!$attendance->break_start) return "⚠️ 休憩開始の記録がありません。";
-                if ($attendance->break_end) return "⚠️ すでに休憩終了済みです。";
+                if (!$attendance->break_start)
+                    return "⚠️ 休憩開始の記録がありません。";
+                if ($attendance->break_end)
+                    return "⚠️ すでに休憩終了済みです。";
                 $attendance->break_end = now();
                 $attendance->break_minutes = $attendance->calculateBreakMinutes();
                 $attendance->save();
-                return "✅ 休憩終了を記録しました。\n休憩時間：" . $attendance->break_minutes . "分\n終了時刻：" . $attendance->break_end->format('H:i:s');
+                return "✅ 休憩終了を記録しました。\n休憩時間：" . $attendance->break_minutes . "分";
 
             case '退勤':
-                if (!$attendance->clock_in || $attendance->clock_out) return "⚠️ 出勤していないか、すでに退勤済みです。";
+                if (!$attendance->clock_in)
+                    return "⚠️ 出勤していません。";
+                if ($attendance->clock_out)
+                    return "⚠️ すでに退勤済みです。";
+
                 $attendance->clock_out = now();
+
+                // ✅ 休憩時間を確実に反映
+                if ($attendance->break_start && $attendance->break_end) {
+                    $attendance->break_minutes = $attendance->calculateBreakMinutes();
+                }
+
                 $attendance->save();
+
+                // ✅ 給与テーブルをリアルタイム更新
+                \App\Models\Attendance::recalculatePayroll(
+                    $attendance->user_id,
+                    $attendance->company_id,
+                    $attendance->date
+                );
+
                 return "🏁 退勤を記録しました。\n本日の給与：¥" . number_format($attendance->pay);
 
             default:

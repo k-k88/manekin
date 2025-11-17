@@ -14,14 +14,15 @@
     <form method="GET" class="mb-3 d-flex gap-2 align-items-end flex-wrap">
         <div>
             <label for="month">月</label>
-            <input type="month" id="month" name="month" class="form-control" value="{{ request('month', now()->format('Y-m')) }}">
+            <input type="month" id="month" name="month" class="form-control"
+                   value="{{ request('month', now()->format('Y-m')) }}">
         </div>
         <div>
             <label for="user_id">社員</label>
             <select id="user_id" name="user_id" class="form-select">
                 <option value="">全員</option>
                 @foreach($users as $user)
-                    <option value="{{ $user->id }}" @if(request('user_id') == $user->id) selected @endif>
+                    <option value="{{ $user->id }}" @selected(request('user_id') == $user->id)>
                         {{ $user->name }}
                     </option>
                 @endforeach
@@ -29,7 +30,8 @@
         </div>
         <div class="align-self-end">
             <button type="submit" class="btn btn-primary">表示</button>
-            <a href="{{ route('company.payrolls', ['company' => $company->id]) }}" class="btn btn-outline-secondary">リセット</a>
+            <a href="{{ route('company.payrolls', ['company' => $company->id]) }}"
+               class="btn btn-outline-secondary">リセット</a>
         </div>
     </form>
 
@@ -41,96 +43,51 @@
 
     {{-- 給与テーブル --}}
     <div class="table-responsive">
-    <table class="table table-bordered table-hover align-middle shadow-sm text-center">
-        <thead class="table-light">
-            <tr>
-                <th>社員名</th>
-                <th>日付</th>
-                <th>出勤</th>
-                <th>退勤</th>
-                <th>勤務時間</th>
-                <th>休憩時間</th>
-                <th>時給</th>
-                <th>給与</th>
-            </tr>
-        </thead>
-        <tbody>
-            @forelse ($attendances as $attendance)
-                @php
-                    // キャスト済みCarbonを使用
-                    $clockIn  = $attendance->clock_in;
-                    $clockOut = $attendance->clock_out;
-                    $breakStart = $attendance->break_start;
-                    $breakEnd   = $attendance->break_end;
-
-                    // 日跨ぎ対応
-                    if($clockIn && $clockOut && $clockOut->lessThanOrEqualTo($clockIn)) {
-                        $clockOut = $clockOut->copy()->addDay();
-                    }
-                    if($breakStart && $breakEnd && $breakEnd->lessThan($breakStart)) {
-                        $breakEnd = $breakEnd->copy()->addDay();
-                    }
-
-                    $displayIn  = $clockIn ? $clockIn->format('H:i') : '-';
-                    $displayOut = $clockOut ? $clockOut->format('H:i') : '-';
-
-                    // 勤務時間計算
-                    $workMinutes = 0;
-                    $breakMinutes = 0;
-                    if($clockIn && $clockOut){
-                        $workMinutes = $clockIn->diffInMinutes($clockOut);
-                        if($breakStart && $breakEnd){
-                            $breakMinutes = $breakStart->diffInMinutes($breakEnd);
-                        }
-                        $workMinutes = max(0, $workMinutes - $breakMinutes);
-                    }
-
-                    $workHours = round($workMinutes / 60, 2);
-                    $breakHours = round($breakMinutes / 60, 2);
-
-                    $hourlyWage = $attendance->effective_wage ?? 0;
-                    $pay = round($workHours * $hourlyWage);
-                @endphp
+        <table class="table table-bordered table-hover align-middle shadow-sm text-center">
+            <thead class="table-light">
                 <tr>
-                    <td>{{ $attendance->user->name }}</td>
-                    <td>{{ $attendance->date }}</td>
-                    <td>{{ $displayIn }}</td>
-                    <td>{{ $displayOut }}</td>
-                    <td>{{ number_format($workHours,2) }} h</td>
-                    <td>{{ number_format($breakHours,2) }} h</td>
-                    <td>{{ number_format($hourlyWage) }} 円</td>
-                    <td>{{ number_format($pay) }} 円</td>
+                    <th>社員名</th>
+                    <th>日付</th>
+                    <th>出勤</th>
+                    <th>退勤</th>
+                    <th>勤務時間</th>
+                    <th>休憩時間</th>
+                    <th>時給</th>
+                    <th>給与</th>
                 </tr>
-            @empty
-                <tr>
-                    <td colspan="8" class="text-center text-muted">勤怠データがありません</td>
-                </tr>
-            @endforelse
-        </tbody>
-    </table>
+            </thead>
+            <tbody>
+                @forelse ($attendances as $attendance)
+                    <tr>
+                        <td>{{ $attendance->user->name }}</td>
+                        <td>{{ $attendance->date ? \Carbon\Carbon::parse($attendance->date)->format('Y-m-d') : '-' }}</td>
+
+
+                        {{-- 出退勤 --}}
+                        <td>{{ optional($attendance->clock_in)->format('H:i') ?? '-' }}</td>
+                        <td>{{ optional($attendance->clock_out)->format('H:i') ?? '-' }}</td>
+
+                        {{-- 勤務・休憩時間 --}}
+                        <td>{{ number_format($attendance->hours, 2) }} h</td>
+                        <td>{{ number_format(($attendance->break_minutes ?? 0) / 60, 2) }} h</td>
+
+                        {{-- 時給・支給額 --}}
+                        <td>{{ number_format($attendance->effective_wage) }} 円</td>
+                        <td>{{ number_format($attendance->pay) }} 円</td>
+                    </tr>
+                @empty
+                    <tr>
+                        <td colspan="8" class="text-center text-muted">勤怠データがありません</td>
+                    </tr>
+                @endforelse
+            </tbody>
+        </table>
     </div>
 
     {{-- 総給与 --}}
     @if($attendances->count())
-        @php
-            $totalPay = $attendances->sum(function($a){
-                $clockIn  = $a->clock_in;
-                $clockOut = $a->clock_out;
-                $breakStart = $a->break_start;
-                $breakEnd   = $a->break_end;
-
-                if($clockIn && $clockOut && $clockOut->lessThanOrEqualTo($clockIn)) $clockOut = $clockOut->copy()->addDay();
-                if($breakStart && $breakEnd && $breakEnd->lessThan($breakStart)) $breakEnd = $breakEnd->copy()->addDay();
-
-                $workMinutes = $clockIn && $clockOut ? $clockIn->diffInMinutes($clockOut) : 0;
-                $breakMinutes = $breakStart && $breakEnd ? $breakStart->diffInMinutes($breakEnd) : 0;
-
-                $worked = max(0, $workMinutes - $breakMinutes);
-                return round($worked / 60 * ($a->effective_wage ?? 0));
-            });
-        @endphp
         <div class="mt-3 text-end fw-bold">
-            総給与: {{ number_format($totalPay) }} 円
+            総給与: {{ number_format($attendances->sum('pay')) }} 円
         </div>
     @endif
 </div>

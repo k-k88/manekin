@@ -37,7 +37,7 @@ class Attendance extends Model
     ];
 
     // ----------------------------
-    // リレーション
+    // 🔹 リレーション
     // ----------------------------
     public function user()
     {
@@ -49,74 +49,66 @@ class Attendance extends Model
         return $this->hasOne(Payroll::class);
     }
 
+    // ==============================
+    // ⏰ 補助関数：29:00 → 翌日05:00 に補正
+    // ==============================
+    protected function parseTimeWithOverflow($baseDate, $time)
+    {
+        if (!$time) return null;
+        if ($time instanceof Carbon) return $time;
+
+        [$hour, $minute] = explode(':', $time);
+        $carbon = Carbon::parse($baseDate)->setTime(0, 0);
+        if ((int)$hour >= 24) {
+            $carbon->addDay();
+            $hour -= 24;
+        }
+        return $carbon->setTime((int)$hour, (int)$minute);
+    }
+
     // ----------------------------
-    // 有効な時給を取得
+    // 💰 有効な時給
     // ----------------------------
     public function getEffectiveWageAttribute()
     {
-        $wageHistory = WageHistory::where('user_id', $this->user_id)
-            ->where('effective_from', '<=', $this->date)
-            ->orderByDesc('effective_from')
-            ->first();
-
+        $wageHistory = WageHistory::getWageForDate($this->user_id, $this->date);
         return $wageHistory ? $wageHistory->hourly_wage : $this->hourly_wage;
     }
 
     // ----------------------------
-    // 休憩時間（分）を算出
+    // ☕ 休憩時間（分）
     // ----------------------------
     public function calculateBreakMinutes(): int
     {
         if ($this->break_start && $this->break_end) {
-            $bStart = $this->break_start->copy();
-            $bEnd   = $this->break_end->copy();
+            $bStart = $this->parseTimeWithOverflow($this->date, $this->break_start);
+            $bEnd   = $this->parseTimeWithOverflow($this->date, $this->break_end);
 
-            if ($bEnd->lessThanOrEqualTo($bStart)) {
-                $bEnd->addDay();
-            }
+            if ($bEnd->lessThanOrEqualTo($bStart)) $bEnd->addDay();
 
             return $bStart->diffInMinutes($bEnd);
         }
-
         return 0;
     }
 
     // ----------------------------
-    // 出勤・退勤の表示フォーマット
-    // ----------------------------
-    public function getDisplayClockInAttribute()
-    {
-        return $this->clock_in?->copy()->format('H:i');
-    }
-
-    public function getDisplayClockOutAttribute()
-    {
-        if (!$this->clock_out) return null;
-
-        $clockOut = $this->clock_out->copy();
-        if ($clockOut->lessThanOrEqualTo($this->clock_in)) {
-            $clockOut->addDay();
-        }
-
-        return $clockOut->format('H:i');
-    }
-
-    // ----------------------------
-    // 勤務総分数（休憩除く）
+    // ⏱️ 勤務総分数（29:00対応）
     // ----------------------------
     public function getTotalWorkMinutes(): int
     {
         if (!$this->clock_in || !$this->clock_out) return 0;
 
-        $clockOut = $this->clock_out->copy();
-        if ($clockOut->lessThanOrEqualTo($this->clock_in)) $clockOut->addDay();
+        $in  = $this->parseTimeWithOverflow($this->date, $this->clock_in);
+        $out = $this->parseTimeWithOverflow($this->date, $this->clock_out);
+
+        if ($out->lessThanOrEqualTo($in)) $out->addDay();
 
         $breakMinutes = $this->break_minutes ?? $this->calculateBreakMinutes();
-        return $this->clock_in->diffInMinutes($clockOut) - $breakMinutes;
+        return max(0, $in->diffInMinutes($out) - $breakMinutes);
     }
 
     // ----------------------------
-    // 深夜勤務分の計算（22:00～翌5:00）
+    // 🌙 深夜勤務（22:00～翌5:00）
     // ----------------------------
     protected function calculateNightMinutes(Carbon $start, Carbon $end): int
     {
@@ -126,21 +118,27 @@ class Attendance extends Model
         $overlapStart = $start->max($nightStart);
         $overlapEnd   = $end->min($nightEnd);
 
-        return $overlapStart->lt($overlapEnd) ? $overlapStart->diffInMinutes($overlapEnd) : 0;
+        return $overlapStart->lt($overlapEnd)
+            ? $overlapStart->diffInMinutes($overlapEnd)
+            : 0;
     }
 
     // ----------------------------
-    // 勤務時間・給与計算（深夜手当込み）
+    // 💴 給与計算（深夜手当含む）
     // ----------------------------
     public function getPayAttribute(): int
     {
         if (!$this->clock_in || !$this->clock_out) return 0;
 
-        $totalMinutes = $this->getTotalWorkMinutes();
-        $nightMinutes = $this->calculateNightMinutes($this->clock_in, $this->clock_out);
-        $normalMinutes = max(0, $totalMinutes - $nightMinutes);
-        $hourlyWage = $this->effective_wage;
+        $in  = $this->parseTimeWithOverflow($this->date, $this->clock_in);
+        $out = $this->parseTimeWithOverflow($this->date, $this->clock_out);
+        if ($out->lessThanOrEqualTo($in)) $out->addDay();
 
+        $totalMinutes = $this->getTotalWorkMinutes();
+        $nightMinutes = $this->calculateNightMinutes($in, $out);
+        $normalMinutes = max(0, $totalMinutes - $nightMinutes);
+
+        $hourlyWage = $this->effective_wage;
         $normalPay = ($normalMinutes / 60) * $hourlyWage;
         $nightPay  = ($nightMinutes / 60) * $hourlyWage * 1.25;
 
@@ -148,7 +146,22 @@ class Attendance extends Model
     }
 
     // ----------------------------
-    // モデルイベントで自動計算・給与再計算
+    // 🕒 勤務時間（時間単位）アクセサ
+    // ----------------------------
+    public function getWorkedHoursAttribute(): float
+    {
+        if (!$this->clock_in || !$this->clock_out) return 0;
+
+        $in  = $this->parseTimeWithOverflow($this->date, $this->clock_in);
+        $out = $this->parseTimeWithOverflow($this->date, $this->clock_out);
+        if ($out->lessThanOrEqualTo($in)) $out->addDay();
+
+        $breakMinutes = $this->break_minutes ?? $this->calculateBreakMinutes();
+        return round(($in->diffInMinutes($out) - $breakMinutes) / 60, 2);
+    }
+
+    // ----------------------------
+    // 🔄 モデルイベント（自動更新）
     // ----------------------------
     protected static function booted()
     {
@@ -168,7 +181,7 @@ class Attendance extends Model
     }
 
     // ----------------------------
-    // 月ごとの給与再計算処理
+    // 📆 月次給与再計算
     // ----------------------------
     protected static function recalculatePayroll($userId, $companyId, $targetDate)
     {
@@ -199,8 +212,12 @@ class Attendance extends Model
         $hourlyWage = 0;
 
         foreach ($records as $record) {
+            $in  = $record->parseTimeWithOverflow($record->date, $record->clock_in);
+            $out = $record->parseTimeWithOverflow($record->date, $record->clock_out);
+            if ($out->lessThanOrEqualTo($in)) $out->addDay();
+
             $totalMinutes = $record->getTotalWorkMinutes();
-            $nightMinutes = $record->calculateNightMinutes($record->clock_in, $record->clock_out);
+            $nightMinutes = $record->calculateNightMinutes($in, $out);
             $normalMinutes = max(0, $totalMinutes - $nightMinutes);
 
             $hourlyWage = $record->effective_wage ?? $record->hourly_wage ?? 0;
@@ -212,15 +229,15 @@ class Attendance extends Model
             $totalPay   += $normalPay + $nightPay;
         }
 
-       Payroll::updateOrCreate(
-           ['user_id' => $userId, 'month' => $monthStart->format('Y-m-01')],
-           [
-               'company_id'   => $companyId,
-               'total_hours'  => round($totalHours, 2),
-               'hourly_wage'  => $hourlyWage,
-               'total_pay'    => round($totalPay),
-               'attendance_id'=> null,
-           ]
-       );
+        Payroll::updateOrCreate(
+            ['user_id' => $userId, 'month' => $monthStart->format('Y-m-01')],
+            [
+                'company_id'   => $companyId,
+                'total_hours'  => round($totalHours, 2),
+                'hourly_wage'  => $hourlyWage,
+                'total_pay'    => round($totalPay),
+                'attendance_id'=> null,
+            ]
+        );
     }
 }

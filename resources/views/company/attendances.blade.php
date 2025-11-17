@@ -88,20 +88,15 @@
                     <tbody>
                         @forelse ($attendances as $attendance)
                             @php
-                                $clockIn    = $attendance->clock_in  ? \Carbon\Carbon::parse($attendance->clock_in)   : null;
-                                $clockOut   = $attendance->clock_out ? \Carbon\Carbon::parse($attendance->clock_out)  : null;
-                                $breakStart = $attendance->break_start ? \Carbon\Carbon::parse($attendance->break_start) : null;
-                                $breakEnd   = $attendance->break_end   ? \Carbon\Carbon::parse($attendance->break_end)   : null;
-
-                                $displayClockIn    = $clockIn    ? $clockIn->format('H:i') : '';
-                                $displayClockOut   = $clockOut   ? $clockOut->format('H:i') : '';
-                                $displayBreakStart = $breakStart ? $breakStart->format('H:i') : '';
-                                $displayBreakEnd   = $breakEnd   ? $breakEnd->format('H:i')   : '';
+                                $displayClockIn    = $attendance->clock_in  ? \Carbon\Carbon::parse($attendance->clock_in)->format('H:i') : '';
+                                $displayClockOut   = $attendance->clock_out ? \Carbon\Carbon::parse($attendance->clock_out)->format('H:i') : '';
+                                $displayBreakStart = $attendance->break_start ? \Carbon\Carbon::parse($attendance->break_start)->format('H:i') : '';
+                                $displayBreakEnd   = $attendance->break_end   ? \Carbon\Carbon::parse($attendance->break_end)->format('H:i')   : '';
                             @endphp
 
                             <tr>
                                 <td class="text-nowrap">{{ $attendance->user->name }}</td>
-                                <td>{{ $attendance->date }}</td>
+                                <td>{{ optional($attendance->date)->format('Y-m-d') ?? '-' }}</td>
 
                                 <form action="{{ route('company.attendances.update', ['company' => $company->id, 'attendance' => $attendance->id]) }}" method="POST">
                                     @csrf
@@ -112,18 +107,10 @@
                                     <td><input type="text" name="break_start" class="form-control form-control-sm time-input" value="{{ $displayBreakStart }}"></td>
                                     <td><input type="text" name="break_end" class="form-control form-control-sm time-input" value="{{ $displayBreakEnd }}"></td>
 
+                                    {{-- 勤務時間（モデルのアクセサ使用） --}}
                                     <td>
-                                        @if ($clockIn && $clockOut)
-                                            @php
-                                                $breakMinutes = 0;
-                                                if ($breakStart && $breakEnd) {
-                                                    $bS = $breakStart->copy();
-                                                    $bE = $breakEnd->copy();
-                                                    $breakMinutes = $bS->diffInMinutes($bE);
-                                                }
-                                                $workedHours = ($clockIn->diffInMinutes($clockOut) - $breakMinutes) / 60;
-                                            @endphp
-                                            <span class="fw-bold">{{ number_format($workedHours, 2) }}</span> 時間
+                                        @if ($attendance->clock_in && $attendance->clock_out)
+                                            <span class="fw-bold">{{ number_format($attendance->worked_hours, 2) }}</span> 時間
                                         @else
                                             <span class="text-muted">-</span>
                                         @endif
