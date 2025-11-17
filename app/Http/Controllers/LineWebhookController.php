@@ -32,13 +32,15 @@ class LineWebhookController extends Controller
         foreach ($events as $event) {
             $replyToken = $event['replyToken'] ?? null;
             $lineUserId = $event['source']['userId'] ?? null;
-            $text       = trim($event['message']['text'] ?? '');
-            $replyText  = null;
+
+            // 🚀 全角スペース・改行・半角スペースなどを完全除去
+            $text = preg_replace('/[\s　]+/u', '', $event['message']['text'] ?? '');
+            $replyText = null;
 
             // ==============================
-            // 🔹 登録
+            // 🔹 登録コマンド
             // ==============================
-            if (preg_match('/^登録\s+([A-Za-z0-9]+)\s+(\d+)$/u', $text, $m)) {
+            if (preg_match('/^登録([A-Za-z0-9]+)(\d+)$/u', $text, $m)) {
                 $replyText = $this->handleRegistration($m[1], $m[2], $lineUserId);
                 $this->maybeReplyText($replyToken, $replyText);
                 continue;
