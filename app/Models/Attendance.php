@@ -8,6 +8,7 @@ use Carbon\Carbon;
 use App\Models\Payroll;
 use App\Models\WageHistory;
 use App\Models\User;
+use App\Models\Shift;
 
 class Attendance extends Model
 {
@@ -26,14 +27,16 @@ class Attendance extends Model
         'break_end',
         'hourly_wage',
         'break_minutes',
+        'late_flag',
+        'early_leave_flag',
     ];
 
     protected $casts = [
-        'clock_in'   => 'datetime',
-        'clock_out'  => 'datetime',
-        'break_start'=> 'datetime',
-        'break_end'  => 'datetime',
-        'date'       => 'date',
+        'clock_in'    => 'datetime',
+        'clock_out'   => 'datetime',
+        'break_start' => 'datetime',
+        'break_end'   => 'datetime',
+        'date'        => 'date',
     ];
 
     // ----------------------------
@@ -50,7 +53,7 @@ class Attendance extends Model
     }
 
     // ==============================
-    // ⏰ 補助関数：29:00 → 翌日05:00 に補正
+    // ⏰ 29:00対応 Carbon変換
     // ==============================
     protected function parseTimeWithOverflow($baseDate, $time)
     {
@@ -67,7 +70,7 @@ class Attendance extends Model
     }
 
     // ----------------------------
-    // 💰 有効な時給
+    // 💰 有効時給
     // ----------------------------
     public function getEffectiveWageAttribute()
     {
@@ -76,23 +79,21 @@ class Attendance extends Model
     }
 
     // ----------------------------
-    // ☕ 休憩時間（分）
+    // ☕ 休憩分数
     // ----------------------------
     public function calculateBreakMinutes(): int
     {
         if ($this->break_start && $this->break_end) {
             $bStart = $this->parseTimeWithOverflow($this->date, $this->break_start);
             $bEnd   = $this->parseTimeWithOverflow($this->date, $this->break_end);
-
             if ($bEnd->lessThanOrEqualTo($bStart)) $bEnd->addDay();
-
             return $bStart->diffInMinutes($bEnd);
         }
         return 0;
     }
 
     // ----------------------------
-    // ⏱️ 勤務総分数（29:00対応）
+    // ⏱ 勤務総分数
     // ----------------------------
     public function getTotalWorkMinutes(): int
     {
@@ -100,7 +101,6 @@ class Attendance extends Model
 
         $in  = $this->parseTimeWithOverflow($this->date, $this->clock_in);
         $out = $this->parseTimeWithOverflow($this->date, $this->clock_out);
-
         if ($out->lessThanOrEqualTo($in)) $out->addDay();
 
         $breakMinutes = $this->break_minutes ?? $this->calculateBreakMinutes();
@@ -108,7 +108,7 @@ class Attendance extends Model
     }
 
     // ----------------------------
-    // 🌙 深夜勤務（22:00～翌5:00）
+    // 🌙 深夜勤務分
     // ----------------------------
     protected function calculateNightMinutes(Carbon $start, Carbon $end): int
     {
@@ -124,7 +124,7 @@ class Attendance extends Model
     }
 
     // ----------------------------
-    // 💴 給与計算（深夜手当含む）
+    // 💴 給与計算
     // ----------------------------
     public function getPayAttribute(): int
     {
@@ -139,14 +139,14 @@ class Attendance extends Model
         $normalMinutes = max(0, $totalMinutes - $nightMinutes);
 
         $hourlyWage = $this->effective_wage;
-        $normalPay = ($normalMinutes / 60) * $hourlyWage;
-        $nightPay  = ($nightMinutes / 60) * $hourlyWage * 1.25;
+        $normalPay  = ($normalMinutes / 60) * $hourlyWage;
+        $nightPay   = ($nightMinutes / 60) * $hourlyWage * 1.25;
 
         return (int) round($normalPay + $nightPay);
     }
 
     // ----------------------------
-    // 🕒 勤務時間（時間単位）アクセサ
+    // 🕒 勤務時間（時間単位）
     // ----------------------------
     public function getWorkedHoursAttribute(): float
     {
@@ -161,7 +161,54 @@ class Attendance extends Model
     }
 
     // ----------------------------
-    // 🔄 モデルイベント（自動更新）
+    // ⏰ 遅刻分（分）
+    // ----------------------------
+  public function getLateMinutesAttribute(): int
+{
+    if (!$this->clock_in) return 0;
+
+    $date = $this->date instanceof Carbon ? $this->date : Carbon::parse($this->date);
+
+    $shift = Shift::where('user_id', $this->user_id)
+        ->where('shift_date', $date->format('Y-m-d'))
+        ->where('status', 'approved')
+        ->first();
+
+    if (!$shift || $shift->is_day_off) return 0;
+
+    $shiftStart = Carbon::parse($date->format('Y-m-d') . ' ' . $shift->start_time);
+    $clockIn    = $this->clock_in instanceof Carbon ? $this->clock_in : Carbon::parse($this->clock_in);
+
+    return $clockIn->greaterThan($shiftStart)
+        ? $clockIn->diffInMinutes($shiftStart)
+        : 0;
+}
+
+    // ----------------------------
+    // ⏰ 早退分（分）
+    // ----------------------------
+    public function getEarlyLeaveMinutesAttribute(): int
+    {
+        if (!$this->clock_out) return 0;
+
+        $date = $this->date instanceof Carbon ? $this->date : Carbon::parse($this->date);
+
+        $shift = Shift::where('user_id', $this->user_id)
+            ->whereDate('shift_date', $date->format('Y-m-d'))
+            ->where('status', 'approved')
+            ->first();
+
+        if (!$shift || $shift->is_day_off) return 0;
+
+        $shiftEnd = Carbon::parse($date->format('Y-m-d') . ' ' . $shift->end_time);
+        $clockOut = $this->clock_out instanceof Carbon ? $this->clock_out : Carbon::parse($this->clock_out);
+
+        $earlyMinutes = $clockOut->diffInMinutes($shiftEnd, false);
+        return max(0, -$earlyMinutes);
+    }
+
+    // ----------------------------
+    // 🔄 モデルイベント
     // ----------------------------
     protected static function booted()
     {
@@ -232,11 +279,11 @@ class Attendance extends Model
         Payroll::updateOrCreate(
             ['user_id' => $userId, 'month' => $monthStart->format('Y-m-01')],
             [
-                'company_id'   => $companyId,
-                'total_hours'  => round($totalHours, 2),
-                'hourly_wage'  => $hourlyWage,
-                'total_pay'    => round($totalPay),
-                'attendance_id'=> null,
+                'company_id'    => $companyId,
+                'total_hours'   => round($totalHours, 2),
+                'hourly_wage'   => $hourlyWage,
+                'total_pay'     => round($totalPay),
+                'attendance_id' => null,
             ]
         );
     }

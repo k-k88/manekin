@@ -6,8 +6,10 @@ use Illuminate\Http\Request;
 use App\Models\Company;
 use App\Models\User;
 use App\Models\Attendance;
+use App\Models\Shift;
 use Carbon\Carbon;
 use Exception;
+use Illuminate\Support\Facades\Log;
 
 class AttendanceController extends Controller
 {
@@ -58,6 +60,38 @@ class AttendanceController extends Controller
 
         $users = User::where('company_id', $company->id)->get();
         return view('company.attendances_create', compact('company', 'users'));
+    }
+
+    /**
+     * 遅刻・早退一覧
+     */
+    public function lateEarlyList(Request $request, Company $company)
+    {
+        $user = auth()->user();
+        if ($user->company_id !== $company->id) {
+            abort(403, 'アクセス権がありません');
+        }
+
+        $month  = $request->input('month', now()->format('Y-m'));
+        $startOfMonth = Carbon::parse($month)->startOfMonth();
+        $endOfMonth   = Carbon::parse($month)->endOfMonth();
+
+        $attendances = Attendance::with('user')
+            ->where('company_id', $company->id)
+            ->whereBetween('date', [$startOfMonth, $endOfMonth])
+            ->where(function ($query) {
+                $query->where('late_flag', 1)
+                      ->orWhere('early_leave_flag', 1);
+            })
+            ->orderByDesc('date')
+            ->paginate(20)
+            ->appends($request->query());
+
+        $users = User::where('company_id', $company->id)
+            ->whereNull('deleted_at')
+            ->get();
+
+        return view('company.attendances_late_early', compact('company', 'attendances', 'users', 'month'));
     }
 
     /**
@@ -147,20 +181,40 @@ class AttendanceController extends Controller
             $workedMinutes = max(0, $clockInTime->diffInMinutes($clockOutTime) - $breakMinutes);
             $workedHours   = round($workedMinutes / 60, 2);
             $breakHours    = round($breakMinutes / 60, 2);
-            $hourlyWage    = $user->hourly_wage ?? 0;
-            $salary        = round($workedHours * $hourlyWage);
+
+            // ===== シフト比較（遅刻 / 早退判定） =====
+            $lateFlag = 0;
+            $earlyLeaveFlag = 0;
+
+            $shift = Shift::where('user_id', $user->id)
+                ->where('shift_date', $date->format('Y-m-d'))
+                ->where('status', 'approved')
+                ->first();
+
+            if ($shift && !$shift->is_day_off) {
+                $shiftStart = Carbon::parse($date->format('Y-m-d') . ' ' . $shift->start_time);
+                $shiftEnd   = Carbon::parse($date->format('Y-m-d') . ' ' . $shift->end_time);
+
+                if ($shiftEnd->lessThanOrEqualTo($shiftStart)) $shiftEnd->addDay();
+
+                if ($clockInTime->greaterThan($shiftStart->copy()->addMinutes(5))) $lateFlag = 1;
+                if ($clockOutTime && $clockOutTime->lessThan($shiftEnd->copy()->subMinutes(5))) $earlyLeaveFlag = 1;
+            }
+            // ===== 判定ここまで =====
 
             Attendance::create([
-                'company_id'    => $company->id,
-                'user_id'       => $user->id,
-                'date'          => $date->format('Y-m-d'),
-                'clock_in'      => $clockInTime->format('H:i:s'),
-                'clock_out'     => $clockOutTime->format('H:i:s'),
-                'break_start'   => $breakStartTime?->format('H:i:s'),
-                'break_end'     => $breakEndTime?->format('H:i:s'),
-                'break_minutes' => $breakMinutes,
-                'hours'         => $workedHours,
-                'break_hours'   => $breakHours,
+                'company_id'      => $company->id,
+                'user_id'         => $user->id,
+                'date'            => $date->format('Y-m-d'),
+                'clock_in'        => $clockInTime->format('H:i:s'),
+                'clock_out'       => $clockOutTime->format('H:i:s'),
+                'break_start'     => $breakStartTime?->format('H:i:s'),
+                'break_end'       => $breakEndTime?->format('H:i:s'),
+                'break_minutes'   => $breakMinutes,
+                'hours'           => $workedHours,
+                'break_hours'     => $breakHours,
+                'late_flag'       => $lateFlag,
+                'early_leave_flag'=> $earlyLeaveFlag,
             ]);
 
             return redirect()->route('company.attendances', $company)
@@ -171,7 +225,7 @@ class AttendanceController extends Controller
         }
     }
 
-         /**
+    /**
      * 勤怠削除
      */
     public function destroyAttendance(Company $company, Attendance $attendance)
@@ -180,7 +234,7 @@ class AttendanceController extends Controller
         if ($authUser->company_id !== $company->id || $attendance->company_id !== $company->id) {
             abort(403, 'アクセス権がありません');
         }
- 
+
         try {
             $attendance->delete();
             return back()->with('success', '勤怠を削除しました。');
@@ -188,7 +242,6 @@ class AttendanceController extends Controller
             return back()->with('error', '削除に失敗しました。');
         }
     }
- 
 
     /**
      * 勤怠更新
@@ -208,6 +261,8 @@ class AttendanceController extends Controller
         ]);
 
         try {
+            $user = User::findOrFail($attendance->user_id);
+
             $normalizeTime = function ($input) {
                 $input = trim(str_replace(['：', '.', ' '], [':', ':', ''], $input));
                 if (preg_match('/^\d{1,2}$/', $input)) return str_pad($input, 2, '0', STR_PAD_LEFT) . ':00';
@@ -240,7 +295,6 @@ class AttendanceController extends Controller
 
             if ($clockOutTime->lessThan($clockInTime)) $clockOutTime->addDay();
 
-            // 休憩
             $breakMinutes   = 0;
             $breakStartTime = null;
             $breakEndTime   = null;
@@ -274,15 +328,36 @@ class AttendanceController extends Controller
             $workedHours   = round($workedMinutes / 60, 2);
             $breakHours    = round($breakMinutes / 60, 2);
 
+            // ===== シフト比較（遅刻 / 早退判定） =====
+            $lateFlag = 0;
+            $earlyLeaveFlag = 0;
+
+            $shift = Shift::where('user_id', $user->id)
+                ->where('shift_date', $date->format('Y-m-d'))
+                ->where('status', 'approved')
+                ->first();
+
+            if ($shift && !$shift->is_day_off) {
+                $shiftStart = Carbon::parse($date->format('Y-m-d') . ' ' . $shift->start_time);
+                $shiftEnd   = Carbon::parse($date->format('Y-m-d') . ' ' . $shift->end_time);
+
+                if ($shiftEnd->lessThanOrEqualTo($shiftStart)) $shiftEnd->addDay();
+
+                if ($clockInTime->greaterThan($shiftStart->copy()->addMinutes(5))) $lateFlag = 1;
+                if ($clockOutTime && $clockOutTime->lessThan($shiftEnd->copy()->subMinutes(5))) $earlyLeaveFlag = 1;
+            }
+            // ===== 判定ここまで =====
 
             $attendance->update([
-                'clock_in'      => $clockInTime->format('H:i:s'),
-                'clock_out'     => $clockOutTime->format('H:i:s'),
-                'break_start'   => $breakStartTime?->format('H:i:s'),
-                'break_end'     => $breakEndTime?->format('H:i:s'),
-                'break_minutes' => $breakMinutes,
-                'hours'         => $workedHours,
-                'break_hours'   => $breakHours,
+                'clock_in'       => $clockInTime->format('H:i:s'),
+                'clock_out'      => $clockOutTime->format('H:i:s'),
+                'break_start'    => $breakStartTime?->format('H:i:s'),
+                'break_end'      => $breakEndTime?->format('H:i:s'),
+                'break_minutes'  => $breakMinutes,
+                'hours'          => $workedHours,
+                'break_hours'    => $breakHours,
+                'late_flag'      => $lateFlag,
+                'early_leave_flag'=> $earlyLeaveFlag,
             ]);
 
             return back()->with('success', '勤怠を更新しました。');
@@ -290,6 +365,5 @@ class AttendanceController extends Controller
         } catch (Exception $e) {
             return back()->withInput()->withErrors(['clock_in' => $e->getMessage()]);
         }
-        
     }
 }
