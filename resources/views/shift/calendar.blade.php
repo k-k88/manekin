@@ -5,6 +5,8 @@
     <h3 class="mb-3 text-center">📅 {{ $user->name }} さんのシフト登録</h3>
 
     <input type="hidden" id="shift_user_id" value="{{ $user->id }}">
+    <input type="hidden" id="deadlinePassed" value="{{ $deadlinePassed ? '1' : '0' }}">
+    <input type="hidden" id="lockedDates" value='@json($lockedDates)'>
 
     @php
         $current = \Carbon\Carbon::create($year, $month, 1);
@@ -23,7 +25,18 @@
            class="btn btn-outline-secondary btn-sm mb-2">次月 →</a>
     </div>
 
-    {{-- 📱 レスポンシブカレンダー --}}
+    {{-- 締切情報 --}}
+    <div class="alert alert-info py-2 small mb-3">
+        <strong>📌 締切設定：</strong>
+        @if ($user->store && $user->store->shift_deadline_type === 'split')
+            前半 {{ $user->store->shift_first_half_deadline ?? '10' }}日 ／ 
+            後半 {{ $user->store->shift_second_half_deadline ?? '25' }}日
+        @else
+            毎月 {{ $user->store->shift_deadline_day ?? '10' }}日まで
+        @endif
+    </div>
+
+    {{-- カレンダー --}}
     <div class="table-responsive-sm shadow-sm">
         <table class="table table-bordered text-center align-middle mb-0" style="min-width: 600px;">
             <thead class="table-light">
@@ -44,15 +57,18 @@
                             <td></td>
                         @else
                             @php
-                                $confirmedShift = isset($confirmed[$dateStr]) ? $confirmed[$dateStr]->first() : null;
-                                $requestShift   = isset($requests[$dateStr]) ? $requests[$dateStr]->first() : null;
+                                $confirmedShift = $confirmed->get($dateStr)?->first();
+                                $requestShift   = $requests->get($dateStr)?->first();
+                                $isLocked = in_array($day, $lockedDates);
                             @endphp
 
-                            <td class="shift-day p-2" data-date="{{ $dateStr }}" style="cursor:pointer;">
+                            <td class="shift-day p-2 {{ $isLocked ? 'locked' : '' }}" data-date="{{ $dateStr }}" style="cursor:pointer;">
                                 <strong>{{ $day }}</strong>
 
-                                {{-- 🟦 提出中 --}}
-                                @if($requestShift)
+                                @if($isLocked)
+                                    <div class="text-muted small">⛔ 締切済</div>
+                                @elseif($requestShift)
+                                    {{-- 提出中 --}}
                                     @if($requestShift->is_day_off)
                                         <div class="text-primary fw-semibold small">❌ 希望休 (提出中)</div>
                                     @else
@@ -62,9 +78,8 @@
                                             <span class="small">(提出中)</span>
                                         </div>
                                     @endif
-
-                                {{-- 🟩 確定 --}}
                                 @elseif($confirmedShift)
+                                    {{-- 確定 --}}
                                     @if($confirmedShift->is_day_off)
                                         <div class="text-danger fw-bold small">❌ 確定休</div>
                                     @else
@@ -121,42 +136,32 @@
     </div>
 </div>
 
-{{-- ===== スマホ最適化CSS ===== --}}
+{{-- ===== CSS ===== --}}
 <style>
+.locked {
+    background-color: #f2f2f2 !important;
+    cursor: not-allowed !important;
+    opacity: 0.6;
+}
+.locked:hover {
+    background-color: #e0e0e0 !important;
+}
 @media (max-width: 576px) {
     h3 { font-size: 1.1rem; }
     h4 { font-size: 1rem; }
-
-    .shift-day {
-        padding: 0.4rem !important;
-        font-size: 0.75rem;
-        min-width: 40px;
-    }
-
-    th {
-        font-size: 0.75rem;
-        padding: 0.4rem;
-    }
-
-    #saveAllBtn {
-        font-size: 0.9rem;
-        padding: 0.7rem;
-    }
-
-    .modal-dialog {
-        max-width: 95%;
-        margin: 0.5rem auto;
-    }
-
-    .modal-body input {
-        font-size: 0.9rem;
-    }
+    .shift-day { padding: 0.4rem !important; font-size: 0.75rem; min-width: 40px; }
+    th { font-size: 0.75rem; padding: 0.4rem; }
+    #saveAllBtn { font-size: 0.9rem; padding: 0.7rem; }
+    .modal-dialog { max-width: 95%; margin: 0.5rem auto; }
+    .modal-body input { font-size: 0.9rem; }
 }
 </style>
 
-{{-- ===== JavaScript ===== --}}
+{{-- ===== JS ===== --}}
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+    const deadlinePassed = document.getElementById('deadlinePassed').value === '1';
+    const lockedDates = JSON.parse(document.getElementById('lockedDates').value);
     let shiftData = JSON.parse(localStorage.getItem('shiftDrafts') || '{}');
 
     // 下書き反映
@@ -169,10 +174,31 @@ document.addEventListener('DOMContentLoaded', function () {
             : `<div class="text-warning small fw-semibold">${s.start_time}〜${s.end_time} (下書き)</div>`;
     }
 
-    // モーダルを開く
+    // 🔹 締切超過
+    if (deadlinePassed) {
+        document.getElementById('saveAllBtn').disabled = true;
+        document.getElementById('saveAllBtn').classList.remove('btn-primary');
+        document.getElementById('saveAllBtn').classList.add('btn-secondary');
+        document.getElementById('saveAllBtn').textContent = '⛔ 提出期限を過ぎています';
+    }
+
+    // セルクリック
     document.querySelectorAll('.shift-day').forEach(cell => {
         cell.addEventListener('click', () => {
             const date = cell.dataset.date;
+            const day = parseInt(date.split('-')[2]);
+
+            if (cell.classList.contains('locked') || lockedDates.includes(day)) {
+                alert("⛔ この日の提出期限は過ぎています。");
+                return;
+            }
+
+            if (deadlinePassed) {
+                alert("⛔ 提出期限を過ぎています。");
+                return;
+            }
+
+            // 通常モーダル
             document.getElementById('shiftModalTitle').innerText = `シフト入力: ${date}`;
             document.getElementById('shift_date').value = date;
 
@@ -186,7 +212,7 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
-    // 希望休切り替え時
+    // 希望休切り替え
     document.getElementById('is_day_off').addEventListener('change', function () {
         document.getElementById('timeInputs').style.opacity = this.checked ? 0.3 : 1;
     });
@@ -204,8 +230,13 @@ document.addEventListener('DOMContentLoaded', function () {
         location.reload();
     });
 
-    // 月提出
+    // 一括提出
     document.getElementById('saveAllBtn').addEventListener('click', function () {
+        if (deadlinePassed) {
+            alert("⛔ 提出期限を過ぎています。提出できません。");
+            return;
+        }
+
         fetch("{{ route('shift.user.saveAll', ['user'=>$user->id]) }}", {
             method: "POST",
             headers: {
@@ -223,6 +254,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 localStorage.removeItem('shiftDrafts');
                 alert("✅ シフトを提出しました");
                 location.reload();
+            } else {
+                alert(r.message || "⚠️ 提出に失敗しました");
             }
         });
     });

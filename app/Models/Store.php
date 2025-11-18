@@ -15,6 +15,10 @@ class Store extends Model
         'address',      // 住所（任意）
         'phone',        // 電話番号（任意）
         'status',       // active / inactive
+        'shift_deadline_type',
+        'shift_deadline_day',
+        'shift_first_half_deadline',
+        'shift_second_half_deadline',
     ];
 
     // 所属企業

@@ -49,21 +49,22 @@
     {{-- 🔧 締め日設定フォーム --}}
     <h4 class="mt-4">🔧 締め日設定</h4>
 
-    <form action="{{ route('company.update', $company->id) }}" method="POST" class="mb-4">
-        @csrf
-        @method('PUT')
+  <form action="{{ route('company.update', $company->id) }}" method="POST" class="mb-4">
+    @csrf
+    @method('PUT')
 
-        <div class="d-flex align-items-center gap-2" style="max-width: 200px;">
-            <select name="closing_day" class="form-select">
-                @for ($i = 1; $i <= 31; $i++)
-                    <option value="{{ $i }}" {{ $company->closing_day == $i ? 'selected' : '' }}>
-                        {{ $i }}日
-                    </option>
-                @endfor
-            </select>
-            <button type="submit" class="btn btn-primary">更新</button>
-        </div>
-    </form>
+    <div class="d-flex align-items-center gap-2 flex-wrap" style="max-width: 220px;">
+        <select name="closing_day" class="form-select w-auto">
+            @for ($i = 1; $i <= 31; $i++)
+                <option value="{{ $i }}" {{ $company->closing_day == $i ? 'selected' : '' }}>
+                    {{ $i }}日
+                </option>
+            @endfor
+        </select>
+        <button type="submit" class="btn btn-primary">更新</button>
+    </div>
+</form>
+
 
     <h4 class="mt-4 mb-3">🕓 出退勤履歴（📅 日付指定 & 🔁 自動更新）</h4>
 

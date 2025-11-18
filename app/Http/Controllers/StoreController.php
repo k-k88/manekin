@@ -57,22 +57,48 @@ class StoreController extends Controller
     }
 
     /**
-     * 店舗更新処理
+     * 店舗更新処理（提出期限対応）
      */
-    public function update(Request $request, Company $company, Store $store)
-    {
-        $request->validate([
-            'name' => 'required|string|max:255',
-            'address' => 'nullable|string|max:255',
-            'phone' => 'nullable|string|max:255',
-            'status' => 'nullable|in:active,inactive',
-        ]);
+   // 店舗更新処理（提出期限対応）
+public function update(Request $request, Company $company, Store $store)
+{
+    $request->validate([
+        'name'  => 'required|string|max:255',
+        'address' => 'nullable|string|max:255',
+        'phone'   => 'nullable|string|max:255',
+        'status'  => 'nullable|in:active,inactive',
 
-        $store->update($request->only('name', 'address', 'phone', 'status'));
+        // ← ここを single,half に統一
+        'shift_deadline_type'          => 'required|in:single,half',
+        'shift_deadline_day'           => 'nullable|integer|min:1|max:31',
+        'shift_first_half_deadline'    => 'nullable|integer|min:1|max:31',
+        'shift_second_half_deadline'   => 'nullable|integer|min:1|max:31',
+    ]);
 
-        return redirect()->route('company.stores.index', $company)
-            ->with('success', '店舗情報を更新しました。');
+    // 使わないフィールドは null にクリアしておくと後段のロジックが楽
+    $data = [
+        'name'   => $request->name,
+        'address'=> $request->address,
+        'phone'  => $request->phone,
+        'status' => $request->status ?? 'active',
+        'shift_deadline_type' => $request->shift_deadline_type,
+    ];
+
+    if ($request->shift_deadline_type === 'single') {
+        $data['shift_deadline_day']         = $request->shift_deadline_day;
+        $data['shift_first_half_deadline']  = null;
+        $data['shift_second_half_deadline'] = null;
+    } else { // half
+        $data['shift_deadline_day']         = null;
+        $data['shift_first_half_deadline']  = $request->shift_first_half_deadline;
+        $data['shift_second_half_deadline'] = $request->shift_second_half_deadline;
     }
+
+    $store->update($data);
+
+    return redirect()->route('company.stores.index', $company)
+        ->with('success', '店舗情報を更新しました。');
+}
 
     /**
      * 店舗削除
