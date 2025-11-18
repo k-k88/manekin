@@ -99,15 +99,18 @@ Route::middleware(['auth'])->group(function () {
         Route::put('/employees/{employee}/update-wage', [EmployeeController::class, 'updateWage'])->name('employees.updateWage');
 
 
-        // -----------------------------
+            // ==============================
         // 勤怠管理
-        // -----------------------------
+        // ==============================
         Route::get('/attendances', [AttendanceController::class, 'index'])->name('attendances');
         Route::get('/attendances/create', [AttendanceController::class, 'createAttendance'])->name('attendances.create');
         Route::post('/attendances', [AttendanceController::class, 'storeAttendance'])->name('attendances.store');
         Route::get('/attendances/{attendance}/edit', [AttendanceController::class, 'editAttendance'])->name('attendances.edit');
         Route::put('/attendances/{attendance}', [AttendanceController::class, 'updateAttendance'])->name('attendances.update');
         Route::delete('/attendances/{attendance}', [AttendanceController::class, 'destroyAttendance'])->name('attendances.destroy');
+        Route::get('/attendances/late-early', [AttendanceController::class, 'lateEarlyList'])->name('attendances.late_early');
+
+
 
 
         // -----------------------------

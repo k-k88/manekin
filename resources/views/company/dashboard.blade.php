@@ -83,6 +83,7 @@
         <a href="{{ route('company.attendances', $company->id) }}" class="btn btn-success m-2">🕓 勤怠一覧</a>
         <a href="{{ route('company.payrolls', $company->id) }}" class="btn btn-warning m-2">💰 給与一覧</a>
         <a href="{{ route('company.shift.requests', $company->id) }}" class="btn btn-info m-2">📨 シフト提出一覧</a>
+        <a href="{{ route('company.attendances.late_early', $company->id) }}" class="btn btn-danger m-2">⏰ 遅刻・早退一覧</a>
 
         <button type="button" class="btn btn-secondary m-2" data-bs-toggle="modal" data-bs-target="#shiftModal">
             🗓️ シフト調整
