@@ -68,12 +68,14 @@
                     @endif
                 </td>
 
-                {{-- 遅刻 --}}
-                <td>
-                    @if($attendance->late_minutes > 0)
-                        ○ ({{ intdiv($attendance->late_minutes, 60) }}h{{ $attendance->late_minutes % 60 }}m)
-                    @endif
-                </td>
+               {{-- 遅刻 --}}
+{{-- 遅刻 --}}
+<td>
+    @php $late = $attendance->late_minutes; @endphp
+    @if($late > 0)
+        ○ ({{ intdiv($late, 60) }}h{{ $late % 60 }}m)
+    @endif
+</td>
 
                 {{-- 早退 --}}
                 <td>

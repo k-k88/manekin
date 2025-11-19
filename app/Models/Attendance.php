@@ -167,19 +167,20 @@ public function getLateMinutesAttribute(): int
 {
     if (!$this->clock_in) return 0;
 
-    $shift = $this->shiftOfDay; // ← ← これに変更
+    $shift = $this->shiftOfDay()->first();
+    if (!$shift || $shift->is_day_off) return 0;
 
-    if (!$shift) return 0;
+    // シフト開始
+    $shiftStart = Carbon::parse("{$shift->shift_date} {$shift->start_time}");
+    // 打刻
+    $clockIn = Carbon::parse("{$this->date->format('Y-m-d')} {$this->clock_in}");
 
-    $shiftStart = Carbon::parse($shift->shift_date . ' ' . $shift->start_time);
-    $clockIn = Carbon::parse($this->date->format('Y-m-d') . ' ' . $this->clock_in);
-
-    if ($clockIn->gt($shiftStart)) {
-        return $clockIn->diffInMinutes($shiftStart);
-    }
-
-    return 0;
+    // 正しい差分は shiftStart → clockIn
+    return $clockIn->gt($shiftStart)
+        ? $shiftStart->diffInMinutes($clockIn)
+        : 0;
 }
+
 
 
 
@@ -193,19 +194,19 @@ public function getEarlyLeaveMinutesAttribute(): int
 {
     if (!$this->clock_out) return 0;
 
-    $shift = $this->shiftOfDay; // ← ← これに変更
+    $shift = $this->shiftOfDay()->first();
+    if (!$shift || $shift->is_day_off) return 0;
 
-    if (!$shift) return 0;
+    $shiftEnd = Carbon::parse($shift->shift_date . ' ' . $shift->end_time);
+    $clockOut = Carbon::parse($this->date->format('Y-m-d') . ' ' . $this->clock_out);
 
-    $shiftEnd = Carbon::parse($this->date->format('Y-m-d') . ' ' . $shift->end_time);
-    $clockOut = $this->parseTimeWithOverflow($this->date, $this->clock_out);
+   return $clockOut->lt($shiftEnd)
+    ? $clockOut->diffInMinutes($shiftEnd)
+    : 0;
 
-    if ($clockOut->lt($shiftEnd)) {
-        return $shiftEnd->diffInMinutes($clockOut);
-    }
 
-    return 0;
 }
+
 
 
 
@@ -292,19 +293,14 @@ public function getEarlyLeaveMinutesAttribute(): int
     }
 public function shiftOfDay()
 {
+    $date = $this->date instanceof \Carbon\Carbon
+        ? $this->date->format('Y-m-d')
+        : $this->date;
+
     return $this->hasOne(Shift::class, 'user_id', 'user_id')
+        ->whereDate('shift_date', $date)
         ->where('status', 'approved');
 }
-
-
-
-
-
-
-
-
-
-
 
 
 }
