@@ -31,11 +31,16 @@ class Attendance extends Model
         'early_leave_flag',
     ];
 
-    protected $casts = [
-        'date' => 'date',                 // これだけでOK
+ protected $casts = [
+    'date' => 'date',
+    'clock_in' => 'string',
+    'clock_out' => 'string',
+    'break_start' => 'string',
+    'break_end' => 'string',
     'late_flag' => 'boolean',
     'early_leave_flag' => 'boolean',
-    ];
+];
+
 
     // ----------------------------
     // 🔹 リレーション

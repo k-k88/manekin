@@ -60,12 +60,15 @@
                 @forelse ($attendances as $attendance)
                     <tr>
                         <td>{{ $attendance->user->name }}</td>
-                        <td>{{ $attendance->date ? \Carbon\Carbon::parse($attendance->date)->format('Y-m-d') : '-' }}</td>
 
+                        {{-- 日付 --}}
+                        <td>{{ \Carbon\Carbon::parse($attendance->date)->format('Y-m-d') }}</td>
 
-                        {{-- 出退勤 --}}
-                        <td>{{ optional($attendance->clock_in)->format('H:i') ?? '-' }}</td>
-                        <td>{{ optional($attendance->clock_out)->format('H:i') ?? '-' }}</td>
+                        {{-- ★ 出勤（Controllerで加工済み値を使う） --}}
+                        <td>{{ $attendance->clock_in_for_view ?? '-' }}</td>
+
+                        {{-- ★ 退勤（Controllerで加工済み値を使う） --}}
+                        <td>{{ $attendance->clock_out_for_view ?? '-' }}</td>
 
                         {{-- 勤務・休憩時間 --}}
                         <td>{{ number_format($attendance->hours, 2) }} h</td>
