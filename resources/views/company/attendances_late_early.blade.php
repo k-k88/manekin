@@ -16,22 +16,66 @@
                 <th>社員名</th>
                 <th>出勤</th>
                 <th>退勤</th>
+
+                {{-- ★ シフト時間を追加 --}}
+                <th>シフト開始</th>
+                <th>シフト終了</th>
+
                 <th>遅刻</th>
                 <th>早退</th>
             </tr>
         </thead>
         <tbody>
             @foreach($attendances as $attendance)
+            @php
+                // Controllerでwith('shiftOfDay')してるので null安全にできる
+                $shift = $attendance->shiftOfDay ?? null;
+            @endphp
+
             <tr>
                 <td>{{ $attendance->date->format('Y-m-d') }}</td>
                 <td>{{ $attendance->user->name }}</td>
-                <td>{{ $attendance->clock_in ? $attendance->clock_in->format('H:i') : '' }}</td>
-                <td>{{ $attendance->clock_out ? $attendance->clock_out->format('H:i') : '' }}</td>
+
+                {{-- 出勤 --}}
+                <td>
+                    {{ $attendance->clock_in
+                        ? \Carbon\Carbon::parse($attendance->clock_in)->format('H:i')
+                        : '' }}
+                </td>
+
+                {{-- 退勤 --}}
+                <td>
+                    {{ $attendance->clock_out
+                        ? \Carbon\Carbon::parse($attendance->clock_out)->format('H:i')
+                        : '' }}
+                </td>
+
+                {{-- ★ シフト開始 --}}
+                <td>
+                    @if ($shift && !$shift->is_day_off)
+                        {{ \Carbon\Carbon::parse($shift->start_time)->format('H:i') }}
+                    @else
+                        -
+                    @endif
+                </td>
+
+                {{-- ★ シフト終了（29:00対応） --}}
+                <td>
+                    @if ($shift && !$shift->is_day_off)
+                        {{ \Carbon\Carbon::parse($shift->end_time)->format('H:i') }}
+                    @else
+                        -
+                    @endif
+                </td>
+
+                {{-- 遅刻 --}}
                 <td>
                     @if($attendance->late_minutes > 0)
                         ○ ({{ intdiv($attendance->late_minutes, 60) }}h{{ $attendance->late_minutes % 60 }}m)
                     @endif
                 </td>
+
+                {{-- 早退 --}}
                 <td>
                     @if($attendance->early_leave_minutes > 0)
                         ○ ({{ intdiv($attendance->early_leave_minutes, 60) }}h{{ $attendance->early_leave_minutes % 60 }}m)

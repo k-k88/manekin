@@ -32,11 +32,9 @@ class Attendance extends Model
     ];
 
     protected $casts = [
-        'clock_in'    => 'datetime',
-        'clock_out'   => 'datetime',
-        'break_start' => 'datetime',
-        'break_end'   => 'datetime',
-        'date'        => 'date',
+        'date' => 'date',                 // これだけでOK
+    'late_flag' => 'boolean',
+    'early_leave_flag' => 'boolean',
     ];
 
     // ----------------------------
@@ -162,50 +160,55 @@ class Attendance extends Model
 
     // ----------------------------
     // ⏰ 遅刻分（分）
-    // ----------------------------
-  public function getLateMinutesAttribute(): int
+// ----------------------------
+// ⏰ 遅刻分（分）
+// ----------------------------
+public function getLateMinutesAttribute(): int
 {
     if (!$this->clock_in) return 0;
 
-    $date = $this->date instanceof Carbon ? $this->date : Carbon::parse($this->date);
+    $shift = $this->shiftOfDay; // ← ← これに変更
 
-    $shift = Shift::where('user_id', $this->user_id)
-        ->where('shift_date', $date->format('Y-m-d'))
-        ->where('status', 'approved')
-        ->first();
+    if (!$shift) return 0;
 
-    if (!$shift || $shift->is_day_off) return 0;
+    $shiftStart = Carbon::parse($shift->shift_date . ' ' . $shift->start_time);
+    $clockIn = Carbon::parse($this->date->format('Y-m-d') . ' ' . $this->clock_in);
 
-    $shiftStart = Carbon::parse($date->format('Y-m-d') . ' ' . $shift->start_time);
-    $clockIn    = $this->clock_in instanceof Carbon ? $this->clock_in : Carbon::parse($this->clock_in);
+    if ($clockIn->gt($shiftStart)) {
+        return $clockIn->diffInMinutes($shiftStart);
+    }
 
-    return $clockIn->greaterThan($shiftStart)
-        ? $clockIn->diffInMinutes($shiftStart)
-        : 0;
+    return 0;
 }
 
-    // ----------------------------
-    // ⏰ 早退分（分）
-    // ----------------------------
-    public function getEarlyLeaveMinutesAttribute(): int
-    {
-        if (!$this->clock_out) return 0;
 
-        $date = $this->date instanceof Carbon ? $this->date : Carbon::parse($this->date);
 
-        $shift = Shift::where('user_id', $this->user_id)
-            ->whereDate('shift_date', $date->format('Y-m-d'))
-            ->where('status', 'approved')
-            ->first();
 
-        if (!$shift || $shift->is_day_off) return 0;
 
-        $shiftEnd = Carbon::parse($date->format('Y-m-d') . ' ' . $shift->end_time);
-        $clockOut = $this->clock_out instanceof Carbon ? $this->clock_out : Carbon::parse($this->clock_out);
 
-        $earlyMinutes = $clockOut->diffInMinutes($shiftEnd, false);
-        return max(0, -$earlyMinutes);
+// ----------------------------
+// ⏰ 早退分（分）
+// ----------------------------
+public function getEarlyLeaveMinutesAttribute(): int
+{
+    if (!$this->clock_out) return 0;
+
+    $shift = $this->shiftOfDay; // ← ← これに変更
+
+    if (!$shift) return 0;
+
+    $shiftEnd = Carbon::parse($this->date->format('Y-m-d') . ' ' . $shift->end_time);
+    $clockOut = $this->parseTimeWithOverflow($this->date, $this->clock_out);
+
+    if ($clockOut->lt($shiftEnd)) {
+        return $shiftEnd->diffInMinutes($clockOut);
     }
+
+    return 0;
+}
+
+
+
 
     // ----------------------------
     // 🔄 モデルイベント
@@ -287,4 +290,21 @@ class Attendance extends Model
             ]
         );
     }
+public function shiftOfDay()
+{
+    return $this->hasOne(Shift::class, 'user_id', 'user_id')
+        ->where('status', 'approved');
+}
+
+
+
+
+
+
+
+
+
+
+
+
 }
