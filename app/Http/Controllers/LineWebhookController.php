@@ -137,14 +137,44 @@ if (preg_match('/^登録([A-Za-z0-9]{4})(\d{1,4})$/u', $text, $m)) {
         $attendance = Attendance::firstOrNew(['user_id' => $user->id, 'date' => $today]);
         $attendance->store_id   ??= $user->store_id;
         $attendance->company_id ??= $user->company_id;
+
+        // ==============================
+// 🔹 シフトチェック追加
+// ==============================
+$shift = \App\Models\Shift::where('user_id', $user->id)
+    ->where('shift_date', $today)
+    ->first();
+
+if ($shift) {
+    $now = Carbon::now();
+    $shiftStart = Carbon::parse($shift->start_time);
+    $shiftEnd   = Carbon::parse($shift->end_time);
+}
+
  
         switch ($command) {
-            case '出勤':
-                if ($attendance->clock_in)
-                    return "⚠️ 今日はすでに出勤済みです。";
-                $attendance->clock_in = now();
-                $attendance->save();
-                return "🕒 出勤を記録しました。";
+           case '出勤':
+
+    if ($attendance->clock_in)
+        return "⚠️ 今日はすでに出勤済みです。";
+
+    // 🔥 シフトがある場合は時間チェック
+    if ($shift) {
+
+        // シフトより早い → 出勤拒否
+        if ($now->lt($shiftStart)) {
+            return "⚠️ シフト開始前のため出勤できません。\n開始時刻：{$shiftStart->format('H:i')}";
+        }
+
+        $isLate = $now->gt($shiftStart);
+
+    }
+
+    // 出勤打刻
+    $attendance->clock_in = now();
+    $attendance->save();
+    return "🕒 出勤を記録しました。";
+
  
             case '休憩開始':
                 if (!$attendance->clock_in)
@@ -167,35 +197,46 @@ if (preg_match('/^登録([A-Za-z0-9]{4})(\d{1,4})$/u', $text, $m)) {
                 return "✅ 休憩終了を記録しました。\n休憩時間：" . $attendance->break_minutes . "分";
  
             case '退勤':
-                if (!$attendance->clock_in)
-                    return "⚠️ 出勤していません。";
-                if ($attendance->clock_out)
-                    return "⚠️ すでに退勤済みです。";
- 
-                $attendance->clock_out = now();
- 
-                if ($attendance->break_start && $attendance->break_end) {
-                    $attendance->break_minutes = $attendance->calculateBreakMinutes();
-                }
-                $attendance->save();
- 
-                // 🔹 本日分給与（深夜手当・休憩控除済み）
-                $todayPay = (int) $attendance->pay;
-                $workedMin = $attendance->getTotalWorkMinutes();
-                $h = intdiv($workedMin, 60);
-                $m = $workedMin % 60;
-                $todayWorked = sprintf("%d時間%02d分", $h, $m);
- 
-                // 🔹 月次サマリ
-                [$workedDisplay, $hourly, $totalPay] = $this->calcMonthlySummary($user);
- 
-                return "🏁 退勤を記録しました。\n"
-                     . "本日の勤務：{$todayWorked}\n"
-                     . "本日の給与：¥" . number_format($todayPay) . "\n\n"
-                     . "【今月サマリ】\n"
-                     . "勤務時間：{$workedDisplay}\n"
-                     . "時給：¥" . number_format($hourly) . "\n"
-                     . "合計給与：¥" . number_format($totalPay);
+
+    if (!$attendance->clock_in)
+        return "⚠️ 出勤していません。";
+
+    if ($attendance->clock_out)
+        return "⚠️ すでに退勤済みです。";
+
+    // 🔥 シフトがある場合は早退チェック
+    if ($shift) {
+
+        if ($now->lt($shiftEnd)) {
+            return "⚠️ シフト終了前のため退勤できません。\n終了時刻：{$shiftEnd->format('H:i')}";
+        }
+    }
+
+    // 退勤打刻
+    $attendance->clock_out = now();
+
+    if ($attendance->break_start && $attendance->break_end) {
+        $attendance->break_minutes = $attendance->calculateBreakMinutes();
+    }
+
+    $attendance->save();
+
+    // 月次サマリ
+    $todayPay = (int) $attendance->pay;
+    $workedMin = $attendance->getTotalWorkMinutes();
+    $h = intdiv($workedMin, 60);
+    $m = $workedMin % 60;
+    $todayWorked = sprintf("%d時間%02d分", $h, $m);
+    [$workedDisplay, $hourly, $totalPay] = $this->calcMonthlySummary($user);
+
+    return "🏁 退勤を記録しました。\n"
+         . "本日の勤務：{$todayWorked}\n"
+         . "本日の給与：¥" . number_format($todayPay) . "\n\n"
+         . "【今月サマリ】\n"
+         . "勤務時間：{$workedDisplay}\n"
+         . "時給：¥" . number_format($hourly) . "\n"
+         . "合計給与：¥" . number_format($totalPay);
+
  
             default:
                 return null;
