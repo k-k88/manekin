@@ -8,7 +8,7 @@ class ShiftRequest extends Model
 {
     protected $fillable = [
         'user_id', 'store_id', 'shift_date',
-        'start_time', 'end_time', 'is_day_off', 'status'
+        'start_time', 'end_time', 'is_day_off', 'status','is_paid_leave', 
     ];
 
     protected $casts = [
@@ -17,6 +17,7 @@ class ShiftRequest extends Model
         'start_time' => 'string',   // ← ★ここを datetime → string
         'end_time'   => 'string',  
         'is_day_off' => 'boolean',
+        'is_paid_leave'  => 'boolean',
     ];
 
     // ✅ 関連付け

@@ -52,27 +52,31 @@
                     <th>退勤</th>
                     <th>勤務時間</th>
                     <th>休憩時間</th>
+                    <th>有給</th>
                     <th>時給</th>
                     <th>給与</th>
                 </tr>
             </thead>
             <tbody>
                 @forelse ($attendances as $attendance)
-                    <tr>
+                    <tr @if($attendance->is_paid_leave_for_view) style="background-color:#cfe2ff;" @endif>
                         <td>{{ $attendance->user->name }}</td>
 
                         {{-- 日付 --}}
                         <td>{{ \Carbon\Carbon::parse($attendance->date)->format('Y-m-d') }}</td>
 
-                        {{-- ★ 出勤（Controllerで加工済み値を使う） --}}
+                        {{-- 出勤 --}}
                         <td>{{ $attendance->clock_in_for_view ?? '-' }}</td>
 
-                        {{-- ★ 退勤（Controllerで加工済み値を使う） --}}
+                        {{-- 退勤 --}}
                         <td>{{ $attendance->clock_out_for_view ?? '-' }}</td>
 
                         {{-- 勤務・休憩時間 --}}
                         <td>{{ number_format($attendance->hours, 2) }} h</td>
                         <td>{{ number_format(($attendance->break_minutes ?? 0) / 60, 2) }} h</td>
+
+                        {{-- 有給 --}}
+                        <td>{{ $attendance->is_paid_leave_for_view ? '有休' : '-' }}</td>
 
                         {{-- 時給・支給額 --}}
                         <td>{{ number_format($attendance->effective_wage) }} 円</td>
@@ -80,7 +84,7 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="8" class="text-center text-muted">勤怠データがありません</td>
+                        <td colspan="9" class="text-center text-muted">勤怠データがありません</td>
                     </tr>
                 @endforelse
             </tbody>

@@ -45,10 +45,11 @@ class ShiftApprovalController extends Controller
         Shift::updateOrCreate(
             ['user_id' => $requestModel->user_id, 'shift_date' => $requestModel->shift_date],
             [
-                'store_id'   => $requestModel->store_id,
-                'start_time' => $requestModel->is_day_off ? null : $requestModel->start_time,
-                'end_time'   => $requestModel->is_day_off ? null : $requestModel->end_time,
-                'is_day_off' => (int) $requestModel->is_day_off,
+                'store_id'      => $requestModel->store_id,
+                'start_time'    => $requestModel->is_day_off ? null : $requestModel->start_time,
+                'end_time'      => $requestModel->is_day_off ? null : $requestModel->end_time,
+                'is_day_off'    => (int) $requestModel->is_day_off,
+                'is_paid_leave' => (int) $requestModel->is_paid_leave ?? false,
             ]
         );
 
@@ -82,10 +83,11 @@ class ShiftApprovalController extends Controller
             Shift::updateOrCreate(
                 ['user_id' => $req->user_id, 'shift_date' => $req->shift_date],
                 [
-                    'store_id'   => $req->store_id,
-                    'start_time' => $req->is_day_off ? null : $req->start_time,
-                    'end_time'   => $req->is_day_off ? null : $req->end_time,
-                    'is_day_off' => (int) $req->is_day_off,
+                    'store_id'      => $req->store_id,
+                    'start_time'    => $req->is_day_off ? null : $req->start_time,
+                    'end_time'      => $req->is_day_off ? null : $req->end_time,
+                    'is_day_off'    => (int) $req->is_day_off,
+                    'is_paid_leave' => (int) $req->is_paid_leave ?? false,
                 ]
             );
             $req->update(['status' => 'approved']);
@@ -111,14 +113,14 @@ class ShiftApprovalController extends Controller
         return view('company.shift.edit', compact('company', 'shiftRequests', 'month'));
     }
 
-public function save(Request $request, $companyId)
+    // ===============================
+    // 元の save メソッド（残す）
+    // ===============================
+ public function save(Request $request, $companyId)
 {
-    \Log::info('SHIFT SAVE REQUEST', $request->all());
-
     $userId = $request->user_id;
-    $date   = Carbon::parse(substr($request->date, 0, 10))->format('Y-m-d'); // ✅ 日付固定
+    $date   = Carbon::parse(substr($request->date, 0, 10))->format('Y-m-d');
 
-    // ✅ 同じ日・同じ人のシフトが既にある場合 → 上書きではなく編集扱い
     $shift = Shift::where('user_id', $userId)
         ->where('shift_date', $date)
         ->first();
@@ -128,28 +130,43 @@ public function save(Request $request, $companyId)
     }
 
     $targetUser = \App\Models\User::find($userId);
-    $shift->user_id  = $userId;
-    $shift->store_id = $targetUser->store_id;
+
+    $shift->user_id    = $userId;
+    $shift->store_id   = $targetUser->store_id;
     $shift->shift_date = $date;
-    $shift->status = 'approved';
+    $shift->status     = 'approved';
 
-    if ($request->boolean('is_day_off')) {
-        // ✅ 希望休
-        $shift->is_day_off = 1;
-        $shift->start_time = null;
-        $shift->end_time   = null;
+    $isDayOff    = $request->boolean('is_day_off', false);
+    $isPaidLeave = $request->boolean('is_paid_leave', false);
+
+    if ($isPaidLeave) {
+        // 有休
+        $shift->is_day_off    = $isDayOff;  // 元の休みフラグは維持
+        $shift->is_paid_leave = true;
+        $shift->start_time    = null;
+        $shift->end_time      = null;
+
+    } elseif ($isDayOff) {
+        // 休み
+        $shift->is_day_off    = true;
+        $shift->is_paid_leave = false;
+        $shift->start_time    = null;
+        $shift->end_time      = null;
+
     } else {
-        $shift->is_day_off = 0;
+        // 出勤
+        $shift->is_day_off    = false;
+        $shift->is_paid_leave = false;
 
-        // ✅ HH:MM → YYYY-MM-DD HH:MM:SS に固定して保存（ズレ対策）
         $start = $request->start_time ? substr($request->start_time, -5) : null;
         $end   = $request->end_time   ? substr($request->end_time,   -5) : null;
 
         $shift->start_time = $start ? Carbon::parse("$date $start:00")->format('Y-m-d H:i:s') : null;
         $shift->end_time   = $end   ? Carbon::parse("$date $end:00")->format('Y-m-d H:i:s') : null;
 
-        // ✅ もし終了が開始より早い → 深夜跨ぎ → 自動で翌日へ補正
-        if ($shift->start_time && $shift->end_time && Carbon::parse($shift->end_time)->lt(Carbon::parse($shift->start_time))) {
+        if ($shift->start_time && $shift->end_time &&
+            Carbon::parse($shift->end_time)->lt(Carbon::parse($shift->start_time))) {
+
             $shift->end_time = Carbon::parse($shift->end_time)->addDay()->format('Y-m-d H:i:s');
         }
     }
@@ -160,64 +177,103 @@ public function save(Request $request, $companyId)
 }
 
 
+    // ===============================
+    // 拡張 save メソッド（boolean + 有休対応）
+    // ===============================
+    public function saveExtended(Request $request, $companyId)
+    {
+        try {
+            $userId = $request->user_id;
+            $date   = Carbon::parse($request->date)->format('Y-m-d');
 
+            $shift = Shift::firstOrNew([
+                'user_id'    => $userId,
+                'shift_date' => $date
+            ]);
 
+            $user = \App\Models\User::find($userId);
+            $shift->user_id    = $userId;
+            $shift->store_id   = $user->store_id;
+            $shift->shift_date = $date;
+            $shift->status     = 'approved';
 
+            // 元の boolean は維持しつつ、有休カラムを追加
+            $isDayOff    = $request->boolean('is_day_off', false);       // 希望休
+            $isPaidLeave = $request->boolean('is_paid_leave', false);    // 有休
 
+            if ($isPaidLeave) {
+                // 有休
+                $shift->is_day_off    = $isDayOff; // 元の値は壊さない
+                $shift->is_paid_leave = true;
+                $shift->start_time    = null;
+                $shift->end_time      = null;
+            } elseif ($isDayOff) {
+                // 希望休
+                $shift->is_day_off    = true;
+                $shift->is_paid_leave = false;
+                $shift->start_time    = null;
+                $shift->end_time      = null;
+            } else {
+                // 出勤
+                $shift->is_day_off    = false;
+                $shift->is_paid_leave = false;
+                [$shift->start_time, $shift->end_time] = $this->parseShiftTimes(
+                    $date,
+                    $request->start_time,
+                    $request->end_time
+                );
+            }
 
+            $shift->save();
+            return response()->json(['shift' => $shift]);
 
-
-
- /* 時刻文字列（例："26:00"）をCarbonの日時に変換
- * 翌日にまたがる時間も処理可能
- */
-private function parseShiftTimes($baseDate, $start, $end)
-{
-    $startTime = $this->normalizeTime($baseDate, $start);
-    $endTime   = $this->normalizeTime($baseDate, $end);
-
-    // もし終了時刻が開始より早い（深夜をまたぐ）場合 → 翌日に加算
-    if ($endTime && $startTime && $endTime->lt($startTime)) {
-        $endTime->addDay();
+        } catch (\Exception $e) {
+            \Log::error('シフト保存エラー: '.$e->getMessage(), $request->all());
+            return response()->json(['status'=>'error','message'=>$e->getMessage()]);
+        }
     }
 
-    return [
-        $startTime ? $startTime->format('Y-m-d H:i:s') : null,
-        $endTime ? $endTime->format('Y-m-d H:i:s') : null,
-    ];
-}
+    // ===============================
+    // 時刻変換 / 深夜跨ぎ対応
+    // ===============================
+    private function parseShiftTimes($baseDate, $start, $end)
+    {
+        $startTime = $this->normalizeTime($baseDate, $start);
+        $endTime   = $this->normalizeTime($baseDate, $end);
 
-/**
- * "25:00" などの時間も正しく扱うための補助関数
- */
-private function normalizeTime($baseDate, $time)
-{
-    if (empty($time)) return null;
-    if (!preg_match('/^(\d{1,2}):(\d{2})$/', $time, $m)) return null;
+        if ($endTime && $startTime && $endTime->lt($startTime)) {
+            $endTime->addDay();
+        }
 
-    $hour = (int)$m[1];
-    $minute = (int)$m[2];
-    $date = Carbon::parse($baseDate);
-
-    if ($hour >= 24) {
-        // 翌日に繰り上げ（例：25:00 → 翌日1:00）
-        $date->addDay();
-        $hour -= 24;
+        return [
+            $startTime ? $startTime->format('Y-m-d H:i:s') : null,
+            $endTime ? $endTime->format('Y-m-d H:i:s') : null,
+        ];
     }
 
-    return $date->setTime($hour, $minute);
-}
+    private function normalizeTime($baseDate, $time)
+    {
+        if (empty($time)) return null;
+        if (!preg_match('/^(\d{1,2}):(\d{2})$/', $time, $m)) return null;
 
+        $hour = (int)$m[1];
+        $minute = (int)$m[2];
+        $date = Carbon::parse($baseDate);
 
+        if ($hour >= 24) {
+            $date->addDay();
+            $hour -= 24;
+        }
 
+        return $date->setTime($hour, $minute);
+    }
 
-
+    // 以下、その他のメソッドは元のまま
     public function deletePage(Company $company)
     {
         return view('company.shift.delete', compact('company'));
     }
 
-    // シフト削除処理
     public function delete(Request $request, Company $company)
     {
         $request->validate([
@@ -232,61 +288,56 @@ private function normalizeTime($baseDate, $time)
             ->with('success', 'シフトを削除しました');
     }
 
-    // カレンダー表示
- // カレンダー表示
-public function calendar(Request $request, Company $company)
-{
-    $month = $request->input('month', now()->format('Y-m'));
+    public function calendar(Request $request, Company $company)
+    {
+        $month = $request->input('month', now()->format('Y-m'));
+        $year  = substr($month, 0, 4);
+        $mon   = substr($month, 5, 2);
+        $firstDay = Carbon::create($year, $mon, 1);
+        $lastDay  = $firstDay->copy()->endOfMonth();
 
-    $year = substr($month, 0, 4);
-    $mon  = substr($month, 5, 2);
-    $firstDay = Carbon::create($year, $mon, 1);
-    $lastDay  = $firstDay->copy()->endOfMonth();
+        $start = $firstDay->copy()->startOfWeek(Carbon::SUNDAY);
+        $end   = $lastDay->copy()->endOfWeek(Carbon::SATURDAY);
 
-    $start = $firstDay->copy()->startOfWeek(Carbon::SUNDAY);
-    $end   = $lastDay->copy()->endOfWeek(Carbon::SATURDAY);
+        $confirmed = Shift::whereHas('user', fn($q) => $q->where('company_id', $company->id))
+            ->whereBetween('shift_date', [$start->format('Y-m-d'), $end->format('Y-m-d')])
+            ->with('user')
+            ->get()
+            ->groupBy(fn($shift) => Carbon::parse($shift->shift_date)->format('Y-m-d'));
 
-    // ✅ confirmed を日付文字列でグルーピング
-    $confirmed = Shift::whereHas('user', fn($q) => $q->where('company_id', $company->id))
-        ->whereBetween('shift_date', [$start->format('Y-m-d'), $end->format('Y-m-d')])
-        ->with('user')
-        ->get()
-        ->groupBy(function ($shift) {
-            return Carbon::parse($shift->shift_date)->format('Y-m-d');
-        });
+        return view('company.shift.calendar', compact(
+            'company', 'confirmed', 'month', 'year', 'mon', 'firstDay', 'lastDay', 'start', 'end'
+        ));
+    }
 
-    // ✅ これが無かった
-    return view('company.shift.calendar', compact(
-        'company', 'confirmed', 'month', 'year', 'mon', 'firstDay', 'lastDay', 'start', 'end'
-    ));
-}
-
-    // カレンダー保存（API用）
-   public function calendarSave(Request $request, Company $company)
+    public function calendarSave(Request $request, Company $company)
 {
     try {
-        $userId    = $request->input('user_id');
-        $storeId   = $request->input('store_id');
-        $date      = substr($request->input('shift_date'), 0, 10); // ISO対策
+        $userId  = $request->input('user_id');
+        $storeId = $request->input('store_id');
+        $date    = substr($request->input('shift_date'), 0, 10);
 
         if (!$userId) {
             return response()->json(['status' => 'error', 'message' => 'ユーザーIDがありません']);
         }
 
-        if ($request->is_day_off) {
-            $startTime = null;
-            $endTime   = null;
-            $isDayOff  = 1;
-        } else {
-            $isDayOff  = 0;
+        // boolean で取得
+        $isDayOff    = $request->boolean('is_day_off', false);       // 希望休
+        $isPaidLeave = $request->boolean('is_paid_leave', false);    // 有休
 
+        $startTime = null;
+        $endTime   = null;
+
+        if (!$isDayOff && !$isPaidLeave) {
+            // 出勤の場合のみ start/end を設定
             $start = $request->input('start_time') ? substr($request->input('start_time'), -5) : null;
             $end   = $request->input('end_time')   ? substr($request->input('end_time'),   -5) : null;
 
-            $startTime = $start ? "$date $start:00" : null;
-            $endTime   = $end   ? "$date $end:00"   : null;
+            if ($start) $startTime = "$date $start:00";
+            if ($end)   $endTime   = "$date $end:00";
         }
 
+        // DB に保存（boolean → 1/0 で確実に保存）
         $shiftModel = Shift::updateOrCreate(
             [
                 'user_id'    => $userId,
@@ -294,82 +345,74 @@ public function calendar(Request $request, Company $company)
                 'store_id'   => $storeId,
             ],
             [
-                'start_time' => $startTime,
-                'end_time'   => $endTime,
-                'is_day_off' => $isDayOff,
-                'status'     => 'approved',
+                'start_time'    => $startTime,
+                'end_time'      => $endTime,
+                'is_day_off'    => $isDayOff ? 1 : 0,
+                'is_paid_leave' => $isPaidLeave ? 1 : 0,
+                'status'        => 'approved',
             ]
         );
 
         return response()->json([
-            'status' => 'success',
+            'status'   => 'success',
             'shift_id' => $shiftModel->id,
-            'message' => 'シフトが保存されました'
+            'message'  => 'シフトが保存されました'
         ]);
 
     } catch (\Exception $e) {
         \Log::error('シフト保存エラー: ' . $e->getMessage(), $request->all());
         return response()->json([
-            'status' => 'error',
+            'status'  => 'error',
             'message' => $e->getMessage()
         ]);
     }
 }
 
 
-    // 日付ごとのシフトリクエスト取得（API用）
-   // ShiftApprovalController
-public function getRequestsByDate($companyId, $date)
-{
-    $requests = ShiftRequest::with('user')
-        ->whereHas('user', fn($q) => $q->where('company_id', $companyId))
-        ->where('shift_date', $date)
-        ->get()
-        ->map(fn($s) => [
-            'id'         => $s->id,
-            'user_id'    => $s->user_id,
-            'user_name'  => $s->user->name,
-            'start_time' => $s->start_time,
-            'end_time'   => $s->end_time,
-            'is_day_off' => (int) $s->is_day_off,
-            'status'     => $s->status,   // ← ★ これだけ足す
+    public function getRequestsByDate($companyId, $date)
+    {
+        $requests = ShiftRequest::with('user')
+            ->whereHas('user', fn($q) => $q->where('company_id', $companyId))
+            ->where('shift_date', $date)
+            ->get()
+            ->map(fn($s) => [
+                'id'           => $s->id,
+                'user_id'      => $s->user_id,
+                'user_name'    => $s->user->name,
+                'start_time'   => $s->start_time,
+                'end_time'     => $s->end_time,
+                'is_day_off'   => (int) $s->is_day_off,
+                'is_paid_leave'=> (int) $s->is_paid_leave ?? 0,
+                'status'       => $s->status,
+            ]);
+
+        return response()->json($requests);
+    }
+
+    public function show(Company $company, $id)
+    {
+        $shift = Shift::whereHas('user', fn($q) => $q->where('company_id', $company->id))
+            ->with('user')
+            ->findOrFail($id);
+
+        return response()->json([
+            'id'           => $shift->id,
+            'user_id'      => $shift->user_id,
+            'user_name'    => $shift->user->name,
+            'shift_date'   => $shift->shift_date,
+            'start_time'   => $shift->start_time ? Carbon::parse($shift->start_time)->format('H:i') : null,
+            'end_time'     => $shift->end_time   ? Carbon::parse($shift->end_time)->format('H:i') : null,
+            'is_day_off'   => $shift->is_day_off,
+            'is_paid_leave'=> $shift->is_paid_leave ?? false,
         ]);
+    }
 
-    return response()->json($requests);
-}
-// シフト1件取得（AJAX）
-// シフト1件取得（AJAX）
-public function show(Company $company, $id)
-{
-    $shift = Shift::whereHas('user', function($q) use ($company){
-            $q->where('company_id', $company->id);
-        })
-        ->with('user')
-        ->findOrFail($id);
+    public function destroy(Company $company, $id)
+    {
+        $shift = Shift::whereHas('user', fn($q) => $q->where('company_id', $company->id))
+            ->findOrFail($id);
 
-    return response()->json([
-        'id'         => $shift->id,
-        'user_id'    => $shift->user_id,
-        'user_name'  => $shift->user->name,
-        'shift_date' => $shift->shift_date,
-        'start_time' => $shift->start_time ? \Carbon\Carbon::parse($shift->start_time)->format('H:i') : null,
-        'end_time'   => $shift->end_time   ? \Carbon\Carbon::parse($shift->end_time)->format('H:i') : null,
-        'is_day_off' => $shift->is_day_off,
-    ]);
-}
-
-
-
-// シフト削除（AJAX）
-public function destroy(Company $company, $id)
-{
-    $shift = Shift::whereHas('user', function($q) use ($company){
-            $q->where('company_id', $company->id);
-        })
-        ->findOrFail($id);
-
-    $shift->delete();
-    return response()->json(['success' => true]);
-}
-
+        $shift->delete();
+        return response()->json(['success' => true]);
+    }
 }
