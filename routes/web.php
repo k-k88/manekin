@@ -124,23 +124,55 @@ Route::middleware(['auth'])->group(function () {
 
         // -----------------------------
         // シフト承認フロー
-        // -----------------------------
-        Route::prefix('shift')->name('shift.')->group(function () {
-            Route::get('/requests', [ShiftApprovalController::class, 'index'])->name('requests');
-            Route::post('/requests/{requestModel}/approve', [ShiftApprovalController::class, 'approve'])->name('requests.approve');
-            Route::post('/requests/{requestModel}/reject', [ShiftApprovalController::class, 'reject'])->name('requests.reject');
-            Route::post('/requests/approve-all', [ShiftApprovalController::class, 'approveAll'])->name('requests.approveAll');
+   Route::prefix('shift')->name('shift.')->group(function () {
 
-            Route::get('/edit', [ShiftApprovalController::class, 'calendar'])->name('calendar.edit');
-            Route::post('/edit', [ShiftApprovalController::class, 'calendarSave'])->name('calendar.save');
-            Route::post('/save', [ShiftApprovalController::class, 'save'])->name('save');
-            Route::get('/delete', [ShiftApprovalController::class, 'deletePage'])->name('delete.page');
-            Route::delete('/delete', [ShiftApprovalController::class, 'delete'])->name('delete');
+    // 提出シフト一覧
+    Route::get('/requests', [ShiftApprovalController::class, 'index'])
+        ->name('requests');
 
-            Route::get('/requests/{date}', [ShiftApprovalController::class, 'getRequestsByDate'])->name('requests.by_date');
-            Route::get('/{id}', [ShiftApprovalController::class, 'show'])->name('show');
-            Route::delete('/{id}', [ShiftApprovalController::class, 'destroy'])->name('destroy');
-        });
+    // 個別承認
+    Route::post('/requests/{shiftRequest}/approve', [ShiftApprovalController::class, 'approve'])
+        ->name('requests.approve');
+
+    // 差戻し
+    Route::post('/requests/{shiftRequest}/reject', [ShiftApprovalController::class, 'reject'])
+        ->name('requests.reject');
+
+    // 一括承認
+    Route::post('/requests/approve-all', [ShiftApprovalController::class, 'approveAll'])
+        ->name('requests.approveAll');
+
+    // カレンダー編集
+    Route::get('/edit', [ShiftApprovalController::class, 'calendar'])
+        ->name('calendar.edit');
+    Route::post('/edit', [ShiftApprovalController::class, 'calendarSave'])
+        ->name('calendar.save');
+
+    // 保存
+    Route::post('/save', [ShiftApprovalController::class, 'save'])
+        ->name('save');
+
+    // 削除ページ
+    Route::get('/delete', [ShiftApprovalController::class, 'deletePage'])
+        ->name('delete.page');
+
+    // 削除実行
+    Route::delete('/delete', [ShiftApprovalController::class, 'delete'])
+        ->name('delete');
+
+    // 日付別取得
+    Route::get('/requests/{date}', [ShiftApprovalController::class, 'getRequestsByDate'])
+        ->name('requests.by_date');
+
+    // シフト詳細
+    Route::get('/{id}', [ShiftApprovalController::class, 'show'])
+        ->name('show');
+
+    // 削除
+    Route::delete('/{id}', [ShiftApprovalController::class, 'destroy'])
+        ->name('destroy');
+});
+
     });
 
 

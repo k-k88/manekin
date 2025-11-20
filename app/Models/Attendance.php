@@ -306,6 +306,24 @@ public function shiftOfDay()
         ->whereDate('shift_date', $date)
         ->where('status', 'approved');
 }
+// Attendance.php
+public function getIsPaidLeaveForViewAttribute()
+{
+    // ここでシフトを参照して有休かどうか判定
+    if($this->shift && $this->shift->is_paid_leave) {
+        return true;
+    }
+    return false;
+}
+
+// Attendance と Shift はリレーションが必要
+public function shift()
+{
+    return $this->hasOne(Shift::class, 'user_id', 'user_id')
+                ->whereDate('shift_date', $this->date)
+                ->latest('created_at');
+}
+
 
 
 }

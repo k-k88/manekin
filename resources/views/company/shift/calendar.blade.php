@@ -39,12 +39,22 @@
                     @if(isset($confirmed[$dateKey]))
                         @foreach($confirmed[$dateKey] as $shift)
                             @php
-                                $displayTime = $shift->is_day_off
-                                    ? '休み'
-                                    : \Carbon\Carbon::parse($shift->start_time)->format('H:i')
-                                      .'〜'.\Carbon\Carbon::parse($shift->end_time)->format('H:i');
+                                if($shift->is_paid_leave){
+                                    $displayTime = '有休';
+                                    $bgColor = '#cfe2ff';
+                                } elseif($shift->is_day_off){
+                                    $displayTime = '希望休';
+                                    $bgColor = '#fff3cd';
+                                } else {
+                                    $displayTime = $shift->start_time && $shift->end_time
+                                        ? \Carbon\Carbon::parse($shift->start_time)->format('H:i')
+                                          .'〜'.\Carbon\Carbon::parse($shift->end_time)->format('H:i')
+                                        : '';
+                                    $bgColor = '#d1e7dd';
+                                }
                             @endphp
-                            <div class="alert alert-info p-1 m-1 small shift-item"
+                            <div class="alert p-1 m-1 small shift-item"
+                                 style="background-color: {{ $bgColor }};"
                                  onclick="event.stopPropagation(); editShift({{ $shift->id }})">
                                 {{ $shift->user->name }}<br>{{ $displayTime }}
                             </div>
@@ -71,6 +81,7 @@
         <form id="shiftForm">
             <input type="hidden" name="date" id="shift_date">
             <input type="hidden" name="shift_id" id="edit_shift_id">
+            <input type="hidden" name="is_paid_leave" id="is_paid_leave" value="0">
 
             <div id="existing_shifts" class="mb-3 small"></div>
 
@@ -84,6 +95,14 @@
                         @endforeach
                     </select>
                 </div>
+                <div class="col-md-2">
+                    <label>種類</label><br>
+                    <select name="shift_type" id="shift_type" class="form-select">
+                        <option value="0">出勤</option>
+                        <option value="1">希望休</option>
+                        <option value="2">有休</option>
+                    </select>
+                </div>
                 <div class="col-md-3">
                     <label>開始時間</label>
                     <input type="time" name="start_time" id="shift_start" class="form-control">
@@ -91,10 +110,6 @@
                 <div class="col-md-3">
                     <label>終了時間</label>
                     <input type="time" name="end_time" id="shift_end" class="form-control">
-                </div>
-                <div class="col-md-2">
-                    <label>休み</label><br>
-                    <input type="checkbox" name="is_day_off" id="shift_dayoff" value="1">
                 </div>
             </div>
         </form>
@@ -112,18 +127,23 @@
 .calendar-cell { height: 110px; cursor: pointer; vertical-align: top; }
 .calendar-cell:hover { background-color: #f2f9ff; }
 .small { font-size: 0.75rem; }
-.shift-item:hover { background-color: #dff0ff; }
+.shift-item:hover { opacity: 0.85; }
 </style>
 
 <script>
 document.addEventListener('DOMContentLoaded', function(){
     const shiftModal = new bootstrap.Modal('#shiftModal');
 
-    // ★ TIME / DATETIME 共通で時刻抽出
     function extractTime(value){
         if(!value) return '';
         return value.length >= 16 ? value.slice(11,16) : value.slice(0,5);
     }
+
+    // ★ shift_type 選択で is_paid_leave を自動セット
+    document.getElementById('shift_type').addEventListener('change', function(){
+        const type = Number(this.value);
+        document.getElementById('is_paid_leave').value = (type === 2 ? 1 : 0);
+    });
 
     window.openShiftModal = function(date) {
         document.getElementById('modalTitle').textContent = "新規シフト登録";
@@ -134,7 +154,8 @@ document.addEventListener('DOMContentLoaded', function(){
         document.getElementById('shift_user').value = '';
         document.getElementById('shift_start').value = '';
         document.getElementById('shift_end').value = '';
-        document.getElementById('shift_dayoff').checked = false;
+        document.getElementById('shift_type').value = 0;
+        document.getElementById('is_paid_leave').value = 0;
 
         fetch(`/company/{{ $company->id }}/shift/requests/${date}`)
             .then(r => r.json())
@@ -144,13 +165,14 @@ document.addEventListener('DOMContentLoaded', function(){
                     html = '<p class="text-muted">この日の登録・希望シフトはありません。</p>';
                 } else {
                     data.forEach(s => {
-                        let start = s.is_day_off ? '' : extractTime(s.start_time);
-                        let end   = s.is_day_off ? '' : extractTime(s.end_time);
+                        let start = s.is_day_off === 0 ? extractTime(s.start_time) : '';
+                        let end   = s.is_day_off === 0 ? extractTime(s.end_time) : '';
                         const kind = s.status === 'confirmed' ? '✅確定' : '📝希望';
+                        const typeName = s.is_day_off === 0 ? '' : (s.is_paid_leave ? '(有休)' : '(希望休)');
 
                         html += `<div style="cursor:pointer;"
-                                 onclick="applyRequestShift(${s.user_id}, '${start}', '${end}', ${s.is_day_off})">
-                                    ${kind}：${s.user_name} ${s.is_day_off ? '(休み)' : start+'〜'+end}
+                                 onclick="applyRequestShift(${s.user_id}, '${start}', '${end}', ${s.is_day_off}, ${s.is_paid_leave})">
+                                    ${kind}：${s.user_name} ${typeName} ${s.is_day_off === 0 ? start+'〜'+end : ''}
                                  </div>`;
                     });
                 }
@@ -159,11 +181,12 @@ document.addEventListener('DOMContentLoaded', function(){
             });
     };
 
-    window.applyRequestShift = function(userId, start, end, isDayOff){
+    window.applyRequestShift = function(userId, start, end, isDayOff, isPaidLeave){
         document.getElementById('shift_user').value = userId;
         document.getElementById('shift_start').value = start;
         document.getElementById('shift_end').value   = end;
-        document.getElementById('shift_dayoff').checked = isDayOff == 1;
+        document.getElementById('shift_type').value  = isDayOff;
+        document.getElementById('is_paid_leave').value = isPaidLeave ? 1 : 0;
     };
 
     window.editShift = function(id){
@@ -177,7 +200,8 @@ document.addEventListener('DOMContentLoaded', function(){
                 document.getElementById('shift_user').value = shift.user_id;
                 document.getElementById('shift_start').value = extractTime(shift.start_time);
                 document.getElementById('shift_end').value   = extractTime(shift.end_time);
-                document.getElementById('shift_dayoff').checked = shift.is_day_off == 1;
+                document.getElementById('shift_type').value  = shift.is_day_off;
+                document.getElementById('is_paid_leave').value = shift.is_paid_leave ? 1 : 0;
 
                 document.getElementById('deleteBtn').style.display = 'inline-block';
                 document.getElementById('existing_shifts').innerHTML = '';
@@ -187,7 +211,6 @@ document.addEventListener('DOMContentLoaded', function(){
 
     window.saveShift = function() {
         const formData = new FormData(document.getElementById('shiftForm'));
-
         fetch('{{ route("company.shift.save", $company->id) }}', {
             method: 'POST',
             headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },

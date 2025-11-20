@@ -4,6 +4,12 @@
 <div class="container">
     <h2>{{ $company->name }} - 遅刻・早退一覧</h2>
 
+    <div class="d-flex gap-2">
+        <a href="{{ route('company.dashboard', $company->id) }}" class="btn btn-outline-secondary">
+            ← ダッシュボード
+        </a>
+    </div>
+
     <form method="GET" class="mb-3">
         <input type="month" name="month" value="{{ $month }}">
         <button type="submit" class="btn btn-primary">絞り込み</button>
