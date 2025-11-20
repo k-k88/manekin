@@ -61,7 +61,7 @@ class PayrollController extends Controller
                     $regularMinutes = 480; // 8h
 
                     if ($att->is_paid_leave) {
-                        // 有給：標準8h × 時給
+
                         $regularWorkedMinutes = $regularMinutes;
                         $overtimeMinutes = 0;
                         $nightMinutes = 0;
@@ -69,8 +69,9 @@ class PayrollController extends Controller
                         $nightPay = 0;
                         $overtimePay = 0;
                         $workedMinutes = 0;
+
                     } elseif ($clockIn && $clockOut) {
-                        // 勤務あり
+
                         if ($clockOut->lessThanOrEqualTo($clockIn)) {
                             $clockOut->addDay();
                         }
@@ -83,7 +84,10 @@ class PayrollController extends Controller
                         $nightEnd   = $clockIn->copy()->addDay()->setTime(5, 0);
                         $overlapStart = $clockIn->max($nightStart);
                         $overlapEnd   = $clockOut->min($nightEnd);
-                        $nightMinutes = $overlapStart->lt($overlapEnd) ? $overlapStart->diffInMinutes($overlapEnd) : 0;
+                        $nightMinutes = $overlapStart->lt($overlapEnd)
+                            ? $overlapStart->diffInMinutes($overlapEnd)
+                            : 0;
+
                         $nightRatio = $nightMinutes / max($totalMinutes, 1);
                         $nightMinutes -= round($breakMinutes * $nightRatio);
 
@@ -93,8 +97,8 @@ class PayrollController extends Controller
                         $regularPay  = ($regularWorkedMinutes / 60) * $hourlyWage;
                         $nightPay    = ($nightMinutes / 60) * $hourlyWage * 1.25;
                         $overtimePay = ($overtimeMinutes / 60) * $hourlyWage * 1.25;
+
                     } else {
-                        // 出勤なし
                         $regularWorkedMinutes = 0;
                         $overtimeMinutes = 0;
                         $regularPay = 0;
@@ -128,7 +132,8 @@ class PayrollController extends Controller
         $company = Company::findOrFail($companyId);
         $monthFilter = $request->month ?? null;
 
-        $query = Attendance::with('user')
+        // shift を必ず eager load
+        $query = Attendance::with(['user', 'shift'])
             ->whereHas('user', fn($q) => $q->where('company_id', $companyId));
 
         if ($monthFilter) {
@@ -140,7 +145,9 @@ class PayrollController extends Controller
 
         $attendances = $query->get();
 
-        // 有給シフト
+        /**
+         * Attendance が無い有給シフトを追加
+         */
         $paidLeavesQuery = Shift::with('user')
             ->where('is_paid_leave', 1)
             ->whereHas('user', fn($q) => $q->where('company_id', $companyId));
@@ -155,83 +162,107 @@ class PayrollController extends Controller
         $paidLeaves = $paidLeavesQuery->get();
 
         foreach ($paidLeaves as $shift) {
-            if ($attendances->where('user_id', $shift->user_id)->where('date', $shift->shift_date)->count()) {
-                continue;
-            }
 
-            $hourlyWage = $shift->user->wage ?? 0;
+            $exists = $attendances->first(function ($att) use ($shift) {
+                return $att->user_id == $shift->user_id &&
+                       $att->date == $shift->shift_date;
+            });
+
+            if ($exists) continue;
+
+            $wageHistory = WageHistory::getWageForDate($shift->user_id, $shift->shift_date);
+            $hourlyWage  = $wageHistory->hourly_wage ?? ($shift->user->wage ?? 0);
 
             $attendances->push((object)[
                 'user' => $shift->user,
+                'user_id' => $shift->user_id,
                 'date' => $shift->shift_date,
-                'clock_in_for_view' => '-',
-                'clock_out_for_view' => '-',
-                'hours' => 0,
+                'clock_in' => null,
+                'clock_out' => null,
+                'clock_in_for_view' => '有休',
+                'clock_out_for_view' => '有休',
+                'hours' => 8.00,
                 'break_minutes' => 0,
                 'is_paid_leave' => 1,
                 'effective_wage' => $hourlyWage,
                 'pay' => $hourlyWage * 8,
-                'is_paid_leave_for_view' => '有給',
+                'is_paid_leave_for_view' => true,
+                'shift' => $shift,
             ]);
         }
 
+        /**
+         * 出勤ありの給与計算
+         */
         foreach ($attendances as $attendance) {
-            if (!empty($attendance->clock_in_for_view) && $attendance->clock_in_for_view != '-') {
-                $baseDate = Carbon::parse($attendance->date)->format('Y-m-d');
 
-                $clockIn  = Carbon::parse("$baseDate {$attendance->clock_in}");
-                $clockOut = Carbon::parse("$baseDate {$attendance->clock_out}");
+            $isPaidLeave = $attendance->shift?->is_paid_leave ?? false;
+            $attendance->is_paid_leave_for_view = $isPaidLeave;
 
-                if ($clockOut->lessThanOrEqualTo($clockIn)) {
-                    $clockOut->addDay();
-                }
+            if ($isPaidLeave) {
+                $wageHistory = WageHistory::getWageForDate($attendance->user_id, $attendance->date);
+                $hourlyWage  = $wageHistory->hourly_wage ?? ($attendance->user->wage ?? 0);
 
-                $attendance->clock_in_for_view  = $attendance->clock_in ? Carbon::parse($attendance->clock_in)->format('H:i') : '-';
-                $attendance->clock_out_for_view = $attendance->clock_out ? Carbon::parse($attendance->clock_out)->format('H:i') : '-';
-
-                $totalMinutes = $clockIn->diffInMinutes($clockOut);
-                $breakMinutes = $attendance->break_minutes ?? 0;
-                $workedMinutes = max(0, $totalMinutes - $breakMinutes);
-
-                $nightStart = $clockIn->copy()->setTime(22, 0);
-                $nightEnd   = $clockIn->copy()->addDay()->setTime(5, 0);
-
-                $overlapStart = $clockIn->max($nightStart);
-                $overlapEnd   = $clockOut->min($nightEnd);
-
-                $nightMinutes = $overlapStart->lt($overlapEnd)
-                    ? $overlapStart->diffInMinutes($overlapEnd)
-                    : 0;
-
-                $nightRatio = $nightMinutes / max($totalMinutes, 1);
-                $nightMinutes -= round($breakMinutes * $nightRatio);
-
-                $month = Carbon::parse($attendance->date)->format('Y-m-01');
-                $payroll = Payroll::where('user_id', $attendance->user->id)
-                    ->where('month', $month)
-                    ->first();
-
-                $wage = WageHistory::where('user_id', $attendance->user->id)
-                    ->where('effective_from', '<=', $attendance->date)
-                    ->where(fn($q) => $q->whereNull('end_date')->orWhere('end_date', '>=', $attendance->date))
-                    ->orderByDesc('effective_from')
-                    ->first();
-
-                $hourlyWage = $payroll->hourly_wage ?? ($wage->hourly_wage ?? $attendance->user->wage ?? 0);
-
-                $regularMinutes = 480;
-                $overtimeMinutes      = max(0, $workedMinutes - $regularMinutes);
-                $regularWorkedMinutes = $workedMinutes - $overtimeMinutes;
-
-                $regularPay  = ($regularWorkedMinutes / 60) * $hourlyWage;
-                $nightPay    = ($nightMinutes / 60) * $hourlyWage * 1.25;
-                $overtimePay = ($overtimeMinutes / 60) * $hourlyWage * 1.25;
-
-                $attendance->pay = $attendance->is_paid_leave ? $hourlyWage * 8 : round($regularPay + $nightPay + $overtimePay);
-                $attendance->hours = round($workedMinutes / 60, 2);
                 $attendance->effective_wage = $hourlyWage;
-                $attendance->is_paid_leave_for_view = $attendance->is_paid_leave ? '有給' : '-';
+                $attendance->clock_in_for_view  = '有休';
+                $attendance->clock_out_for_view = '有休';
+                $attendance->hours = 8.00;
+                $attendance->pay = $hourlyWage * 8;
+                continue;
             }
+
+            // 出勤なし
+            if (!$attendance->clock_in || !$attendance->clock_out) {
+                $attendance->clock_in_for_view  = '-';
+                $attendance->clock_out_for_view = '-';
+                $attendance->hours = 0;
+                $attendance->pay = 0;
+                continue;
+            }
+
+            // 出勤あり
+            $baseDate = Carbon::parse($attendance->date)->format('Y-m-d');
+
+            $clockIn  = Carbon::parse("$baseDate {$attendance->clock_in}");
+            $clockOut = Carbon::parse("$baseDate {$attendance->clock_out}");
+
+            if ($clockOut->lessThanOrEqualTo($clockIn)) {
+                $clockOut->addDay();
+            }
+
+            $attendance->clock_in_for_view  = Carbon::parse($attendance->clock_in)->format('H:i');
+            $attendance->clock_out_for_view = Carbon::parse($attendance->clock_out)->format('H:i');
+
+            $totalMinutes = $clockIn->diffInMinutes($clockOut);
+            $breakMinutes = $attendance->break_minutes ?? 0;
+            $workedMinutes = max(0, $totalMinutes - $breakMinutes);
+
+            // 深夜帯
+            $nightStart = $clockIn->copy()->setTime(22, 0);
+            $nightEnd   = $clockIn->copy()->addDay()->setTime(5, 0);
+            $overlapStart = $clockIn->max($nightStart);
+            $overlapEnd   = $clockOut->min($nightEnd);
+            $nightMinutes = $overlapStart->lt($overlapEnd)
+                ? $overlapStart->diffInMinutes($overlapEnd)
+                : 0;
+
+            // 時給
+            $wageHistory = WageHistory::getWageForDate($attendance->user_id, $attendance->date);
+            $hourlyWage = $wageHistory->hourly_wage ?? ($attendance->user->wage ?? 0);
+            $attendance->effective_wage = $hourlyWage;
+
+            // 支給計算
+            $attendance->hours = round($workedMinutes / 60, 2);
+
+            $regularMinutes = 480;
+            $overtimeMinutes = max(0, $workedMinutes - $regularMinutes);
+            $regularWorkedMinutes = $workedMinutes - $overtimeMinutes;
+
+            $regularPay  = ($regularWorkedMinutes / 60) * $hourlyWage;
+            $nightPay    = ($nightMinutes / 60) * $hourlyWage * 1.25;
+            $overtimePay = ($overtimeMinutes / 60) * $hourlyWage * 1.25;
+
+            $attendance->pay = round($regularPay + $nightPay + $overtimePay);
         }
 
         $users = User::where('company_id', $companyId)->get();

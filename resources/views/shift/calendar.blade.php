@@ -1,3 +1,4 @@
+{{-- resources/views/shift/calendar.blade.php --}}
 @extends('layouts.shift')
 
 @section('content')
@@ -7,6 +8,8 @@
     <input type="hidden" id="shift_user_id" value="{{ $user->id }}">
     <input type="hidden" id="deadlinePassed" value="{{ $deadlinePassed ? '1' : '0' }}">
     <input type="hidden" id="lockedDates" value='@json($lockedDates)'>
+    <input type="hidden" id="currentYear" value="{{ $year }}">
+    <input type="hidden" id="currentMonth" value="{{ $month }}">
 
     @php
         $current = \Carbon\Carbon::create($year, $month, 1);
@@ -62,24 +65,16 @@
                                 $isLocked = in_array($day, $lockedDates);
                             @endphp
 
-                            <td class="shift-day p-2 {{ $isLocked ? 'locked' : '' }}" data-date="{{ $dateStr }}" style="cursor:pointer;">
+                            <td class="shift-day p-2 {{ $isLocked ? 'locked' : '' }}" 
+                                data-date="{{ $dateStr }}"
+                                style="{{ $isLocked ? 'cursor:not-allowed;' : 'cursor:pointer;' }}">
+
                                 <strong>{{ $day }}</strong>
 
-                                @if($isLocked)
-                                    <div class="text-muted small">⛔ 締切済</div>
-                                @elseif($requestShift)
-                                    {{-- 提出中 --}}
-                                    @if($requestShift->is_day_off)
-                                        <div class="text-primary fw-semibold small">❌ 希望休 (提出中)</div>
-                                    @else
-                                        <div class="text-primary small fw-semibold">
-                                            {{ \Carbon\Carbon::parse($requestShift->start_time)->format('H:i') }}〜
-                                            {{ \Carbon\Carbon::parse($requestShift->end_time)->format('H:i') }}
-                                            <span class="small">(提出中)</span>
-                                        </div>
-                                    @endif
-                                @elseif($confirmedShift)
-                                    {{-- 確定 --}}
+                                {{-- 【表示優先順位：確定 → 提出中 → 下書き → 締切済】 --}}
+
+                                {{-- 1）確定済 --}}
+                                @if($confirmedShift)
                                     @if($confirmedShift->is_day_off)
                                         <div class="text-danger fw-bold small">❌ 確定休</div>
                                     @else
@@ -89,6 +84,53 @@
                                         </div>
                                     @endif
                                 @endif
+
+                                {{-- 2）提出中 --}}
+                                @if(!$confirmedShift && $requestShift)
+                                    @if($requestShift->is_day_off)
+                                        <div class="text-primary fw-semibold small">❌ 希望休 (提出中)</div>
+                                    @else
+                                        <div class="text-primary small fw-semibold">
+                                            {{ \Carbon\Carbon::parse($requestShift->start_time)->format('H:i') }}〜
+                                            {{ \Carbon\Carbon::parse($requestShift->end_time)->format('H:i') }}
+                                            <span class="small">(提出中)</span>
+                                        </div>
+                                    @endif
+                                @endif
+
+                           {{-- 3）下書き --}}
+@php
+    $draftKey = "shiftDrafts_{$user->id}_{$year}" . str_pad($month, 2, '0', STR_PAD_LEFT);
+
+    $cookieJson = $_COOKIE[$draftKey] ?? null;
+    $drafts = [];
+
+    if ($cookieJson && is_string($cookieJson)) {
+        $decoded = json_decode($cookieJson, true);
+        if (json_last_error() === JSON_ERROR_NONE) {
+            $drafts = $decoded;
+        }
+    }
+
+    $draft = $drafts[$dateStr] ?? null;
+@endphp
+
+@if(!$confirmedShift && !$requestShift && $draft)
+    @if($draft['is_day_off'])
+        <div class="text-warning fw-semibold small">❌ 希望休 (下書き)</div>
+    @else
+        <div class="text-warning small fw-semibold">
+            {{ $draft['start_time'] }}〜{{ $draft['end_time'] }} (下書き)
+        </div>
+    @endif
+@endif
+
+
+                                {{-- 4）締切済（何もデータ無しの場合のみ表示） --}}
+                                @if($isLocked && !$confirmedShift && !$requestShift && !$draft)
+                                    <div class="text-muted small">⛔ 締切済</div>
+                                @endif
+
                             </td>
                         @endif
 
@@ -120,7 +162,7 @@
             <div class="modal-body">
                 <div class="form-check form-switch mb-3">
                     <input type="checkbox" id="is_day_off" class="form-check-input">
-                    <label class="form-check-label">希望休にする</label>
+                    <label class="form-check-label" for="is_day_off">希望休にする</label>
                 </div>
 
                 <div id="timeInputs">
@@ -140,11 +182,7 @@
 <style>
 .locked {
     background-color: #f2f2f2 !important;
-    cursor: not-allowed !important;
     opacity: 0.6;
-}
-.locked:hover {
-    background-color: #e0e0e0 !important;
 }
 @media (max-width: 576px) {
     h3 { font-size: 1.1rem; }
@@ -160,82 +198,59 @@
 {{-- ===== JS ===== --}}
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+    const userId        = document.getElementById('shift_user_id').value;
+    const year          = document.getElementById('currentYear').value;
+    const month         = document.getElementById('currentMonth').value;
     const deadlinePassed = document.getElementById('deadlinePassed').value === '1';
-    const lockedDates = JSON.parse(document.getElementById('lockedDates').value);
-    let shiftData = JSON.parse(localStorage.getItem('shiftDrafts') || '{}');
+    const lockedDates    = JSON.parse(document.getElementById('lockedDates').value || '[]');
 
-    // 下書き反映
-    for (const date in shiftData) {
-        const cell = document.querySelector(`td[data-date="${date}"]`);
-        if (!cell) continue;
-        const s = shiftData[date];
-        cell.innerHTML += s.is_day_off
-            ? `<div class="text-warning fw-semibold small">❌ 希望休 (下書き)</div>`
-            : `<div class="text-warning small fw-semibold">${s.start_time}〜${s.end_time} (下書き)</div>`;
-    }
+    const draftKey = `shiftDrafts_${userId}_${year}${String(month).padStart(2, '0')}`;
+    let shiftData = JSON.parse(localStorage.getItem(draftKey) || '{}');
 
-    // 🔹 締切超過
-    if (deadlinePassed) {
-        document.getElementById('saveAllBtn').disabled = true;
-        document.getElementById('saveAllBtn').classList.remove('btn-primary');
-        document.getElementById('saveAllBtn').classList.add('btn-secondary');
-        document.getElementById('saveAllBtn').textContent = '⛔ 提出期限を過ぎています';
-    }
+    // 一時保存（ローカル Draft）
+    document.getElementById('shiftForm').addEventListener('submit', e => {
+        e.preventDefault();
+        const date = document.getElementById('shift_date').value;
 
-    // セルクリック
+        shiftData[date] = {
+            is_day_off: document.getElementById('is_day_off').checked,
+            start_time: document.getElementById('start_time').value.trim(),
+            end_time:   document.getElementById('end_time').value.trim(),
+        };
+
+        localStorage.setItem(draftKey, JSON.stringify(shiftData));
+        location.reload();
+    });
+
+    // セルクリック → ロックでは開けない
     document.querySelectorAll('.shift-day').forEach(cell => {
         cell.addEventListener('click', () => {
             const date = cell.dataset.date;
-            const day = parseInt(date.split('-')[2]);
+            const day = parseInt(date.split('-')[2], 10);
 
-            if (cell.classList.contains('locked') || lockedDates.includes(day)) {
-                alert("⛔ この日の提出期限は過ぎています。");
-                return;
-            }
-
-            if (deadlinePassed) {
-                alert("⛔ 提出期限を過ぎています。");
-                return;
-            }
-
-            // 通常モーダル
-            document.getElementById('shiftModalTitle').innerText = `シフト入力: ${date}`;
-            document.getElementById('shift_date').value = date;
+            if (lockedDates.includes(day)) return;  // ロック → 何もしない
+            if (deadlinePassed) return;
 
             const s = shiftData[date] ?? { is_day_off:false, start_time:'', end_time:'' };
+
+            document.getElementById('shiftModalTitle').innerText = `シフト入力: ${date}`;
+            document.getElementById('shift_date').value = date;
             document.getElementById('is_day_off').checked = s.is_day_off;
             document.getElementById('start_time').value = s.start_time;
             document.getElementById('end_time').value = s.end_time;
-            document.getElementById('timeInputs').style.opacity = s.is_day_off ? 0.3 : 1;
 
             new bootstrap.Modal(document.getElementById('shiftModal')).show();
         });
     });
 
-    // 希望休切り替え
+    // 希望休トグル
     document.getElementById('is_day_off').addEventListener('change', function () {
         document.getElementById('timeInputs').style.opacity = this.checked ? 0.3 : 1;
     });
 
-    // 一時保存
-    document.getElementById('shiftForm').addEventListener('submit', e => {
-        e.preventDefault();
-        const date = document.getElementById('shift_date').value;
-        shiftData[date] = {
-            is_day_off: document.getElementById('is_day_off').checked,
-            start_time: document.getElementById('start_time').value,
-            end_time: document.getElementById('end_time').value
-        };
-        localStorage.setItem('shiftDrafts', JSON.stringify(shiftData));
-        location.reload();
-    });
-
     // 一括提出
     document.getElementById('saveAllBtn').addEventListener('click', function () {
-        if (deadlinePassed) {
-            alert("⛔ 提出期限を過ぎています。提出できません。");
-            return;
-        }
+        if (deadlinePassed) return alert("⛔ 提出期限を過ぎています。");
 
         fetch("{{ route('shift.user.saveAll', ['user'=>$user->id]) }}", {
             method: "POST",
@@ -244,14 +259,14 @@ document.addEventListener('DOMContentLoaded', function () {
                 'X-CSRF-TOKEN': '{{ csrf_token() }}'
             },
             body: JSON.stringify({
-                user_id: document.getElementById('shift_user_id').value,
+                user_id: userId,
                 shifts: shiftData
             })
         })
         .then(r => r.json())
         .then(r => {
             if (r.success) {
-                localStorage.removeItem('shiftDrafts');
+                localStorage.removeItem(draftKey);
                 alert("✅ シフトを提出しました");
                 location.reload();
             } else {

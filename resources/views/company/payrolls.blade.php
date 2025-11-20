@@ -60,26 +60,32 @@
             <tbody>
                 @forelse ($attendances as $attendance)
                     <tr @if($attendance->is_paid_leave_for_view) style="background-color:#cfe2ff;" @endif>
+
+                        {{-- 社員名 --}}
                         <td>{{ $attendance->user->name }}</td>
 
                         {{-- 日付 --}}
                         <td>{{ \Carbon\Carbon::parse($attendance->date)->format('Y-m-d') }}</td>
 
                         {{-- 出勤 --}}
-                        <td>{{ $attendance->clock_in_for_view ?? '-' }}</td>
+                        <td>{{ $attendance->clock_in_for_view }}</td>
 
                         {{-- 退勤 --}}
-                        <td>{{ $attendance->clock_out_for_view ?? '-' }}</td>
+                        <td>{{ $attendance->clock_out_for_view }}</td>
 
-                        {{-- 勤務・休憩時間 --}}
+                        {{-- 勤務時間 --}}
                         <td>{{ number_format($attendance->hours, 2) }} h</td>
+
+                        {{-- 休憩時間 --}}
                         <td>{{ number_format(($attendance->break_minutes ?? 0) / 60, 2) }} h</td>
 
                         {{-- 有給 --}}
                         <td>{{ $attendance->is_paid_leave_for_view ? '有休' : '-' }}</td>
 
-                        {{-- 時給・支給額 --}}
+                        {{-- 時給 --}}
                         <td>{{ number_format($attendance->effective_wage) }} 円</td>
+
+                        {{-- 給与 --}}
                         <td>{{ number_format($attendance->pay) }} 円</td>
                     </tr>
                 @empty

@@ -129,39 +129,72 @@ class Attendance extends Model
     // ----------------------------
     // 💴 給与計算
     // ----------------------------
-    public function getPayAttribute(): int
-    {
-        if (!$this->clock_in || !$this->clock_out) return 0;
+ // ----------------------------
+// 💴 給与計算（有給は8時間分）
+// ----------------------------
+public function getPayAttribute(): int
+{
+    // シフト取得
+    $shift = $this->shiftOfDay()->first();
+    $isPaidLeave = $shift?->is_paid_leave ?? false;
 
-        $in  = $this->parseTimeWithOverflow($this->date, $this->clock_in);
-        $out = $this->parseTimeWithOverflow($this->date, $this->clock_out);
-        if ($out->lessThanOrEqualTo($in)) $out->addDay();
-
-        $totalMinutes = $this->getTotalWorkMinutes();
-        $nightMinutes = $this->calculateNightMinutes($in, $out);
-        $normalMinutes = max(0, $totalMinutes - $nightMinutes);
-
-        $hourlyWage = $this->effective_wage;
-        $normalPay  = ($normalMinutes / 60) * $hourlyWage;
-        $nightPay   = ($nightMinutes / 60) * $hourlyWage * 1.25;
-
-        return (int) round($normalPay + $nightPay);
+    // 有給 → 8時間固定
+    if ($isPaidLeave) {
+        $wage = $this->effective_wage ?? $this->hourly_wage ?? 0;
+        return (int) round($wage * 8);
     }
+
+    // 出勤無し → 0円
+    if (!$this->clock_in || !$this->clock_out) {
+        return 0;
+    }
+
+    // 通常計算
+    $in  = $this->parseTimeWithOverflow($this->date, $this->clock_in);
+    $out = $this->parseTimeWithOverflow($this->date, $this->clock_out);
+
+    if ($out->lessThanOrEqualTo($in)) {
+        $out->addDay();
+    }
+
+    $totalMinutes = $this->getTotalWorkMinutes();
+    $nightMinutes = $this->calculateNightMinutes($in, $out);
+    $normalMinutes = max(0, $totalMinutes - $nightMinutes);
+
+    $hourlyWage = $this->effective_wage;
+    $normalPay  = ($normalMinutes / 60) * $hourlyWage;
+    $nightPay   = ($nightMinutes / 60) * $hourlyWage * 1.25;
+
+    return (int) round($normalPay + $nightPay);
+}
+
+
 
     // ----------------------------
     // 🕒 勤務時間（時間単位）
     // ----------------------------
-    public function getWorkedHoursAttribute(): float
-    {
-        if (!$this->clock_in || !$this->clock_out) return 0;
+   public function getWorkedHoursAttribute(): float
+{
+    $shift = $this->shiftOfDay()->first();
+    $isPaidLeave = $shift?->is_paid_leave ?? false;
 
-        $in  = $this->parseTimeWithOverflow($this->date, $this->clock_in);
-        $out = $this->parseTimeWithOverflow($this->date, $this->clock_out);
-        if ($out->lessThanOrEqualTo($in)) $out->addDay();
-
-        $breakMinutes = $this->break_minutes ?? $this->calculateBreakMinutes();
-        return round(($in->diffInMinutes($out) - $breakMinutes) / 60, 2);
+    // 有給 → 8時間
+    if ($isPaidLeave) {
+        return 8.0;
     }
+
+    if (!$this->clock_in || !$this->clock_out) return 0;
+
+    $in  = $this->parseTimeWithOverflow($this->date, $this->clock_in);
+    $out = $this->parseTimeWithOverflow($this->date, $this->clock_out);
+
+    if ($out->lessThanOrEqualTo($in)) $out->addDay();
+
+    $breakMinutes = $this->break_minutes ?? $this->calculateBreakMinutes();
+
+    return round(($in->diffInMinutes($out) - $breakMinutes) / 60, 2);
+}
+
 
     // ----------------------------
     // ⏰ 遅刻分（分）
@@ -309,21 +342,43 @@ public function shiftOfDay()
 // Attendance.php
 public function getIsPaidLeaveForViewAttribute()
 {
-    // ここでシフトを参照して有休かどうか判定
-    if($this->shift && $this->shift->is_paid_leave) {
-        return true;
-    }
-    return false;
+    return $this->shift?->is_paid_leave ? true : false;
 }
+
 
 // Attendance と Shift はリレーションが必要
 public function shift()
 {
+    $date = $this->date instanceof Carbon
+        ? $this->date->format('Y-m-d')
+        : $this->date;
+
     return $this->hasOne(Shift::class, 'user_id', 'user_id')
-                ->whereDate('shift_date', $this->date)
-                ->latest('created_at');
+        ->whereDate('shift_date', $date)
+        ->where('status', 'approved');
 }
 
 
 
+
+public function syncToShift()
+{
+    Shift::updateOrCreate(
+        [
+            'user_id' => $this->user_id,
+            'shift_date' => $this->date,
+        ],
+        [
+            'store_id' => $this->store_id,
+            'start_time' => $this->clock_in ? "{$this->date} {$this->clock_in}:00" : null,
+            'end_time' => $this->clock_out ? "{$this->date} {$this->clock_out}:00" : null,
+            'is_day_off' => 0,
+            'is_paid_leave' => 0,
+            'status' => 'approved'
+        ]
+    );
+
+
+
+}
 }
