@@ -81,6 +81,9 @@
         <form id="shiftForm">
             <input type="hidden" name="date" id="shift_date">
             <input type="hidden" name="shift_id" id="edit_shift_id">
+
+            {{-- ★★ これが超重要（希望休が保存されるようになる） --}}
+            <input type="hidden" name="is_day_off" id="is_day_off" value="0">
             <input type="hidden" name="is_paid_leave" id="is_paid_leave" value="0">
 
             <div id="existing_shifts" class="mb-3 small"></div>
@@ -139,10 +142,22 @@ document.addEventListener('DOMContentLoaded', function(){
         return value.length >= 16 ? value.slice(11,16) : value.slice(0,5);
     }
 
-    // ★ shift_type 選択で is_paid_leave を自動セット
+    // ★ shift_type → is_day_off と is_paid_leave 自動連動
     document.getElementById('shift_type').addEventListener('change', function(){
         const type = Number(this.value);
-        document.getElementById('is_paid_leave').value = (type === 2 ? 1 : 0);
+
+        if (type === 1) { 
+            document.getElementById('is_day_off').value = 1;
+            document.getElementById('is_paid_leave').value = 0;
+        }
+        else if (type === 2) { 
+            document.getElementById('is_day_off').value = 0;
+            document.getElementById('is_paid_leave').value = 1;
+        }
+        else {
+            document.getElementById('is_day_off').value = 0;
+            document.getElementById('is_paid_leave').value = 0;
+        }
     });
 
     window.openShiftModal = function(date) {
@@ -155,6 +170,7 @@ document.addEventListener('DOMContentLoaded', function(){
         document.getElementById('shift_start').value = '';
         document.getElementById('shift_end').value = '';
         document.getElementById('shift_type').value = 0;
+        document.getElementById('is_day_off').value = 0;
         document.getElementById('is_paid_leave').value = 0;
 
         fetch(`/company/{{ $company->id }}/shift/requests/${date}`)
@@ -167,8 +183,11 @@ document.addEventListener('DOMContentLoaded', function(){
                     data.forEach(s => {
                         let start = s.is_day_off === 0 ? extractTime(s.start_time) : '';
                         let end   = s.is_day_off === 0 ? extractTime(s.end_time) : '';
+
                         const kind = s.status === 'confirmed' ? '✅確定' : '📝希望';
-                        const typeName = s.is_day_off === 0 ? '' : (s.is_paid_leave ? '(有休)' : '(希望休)');
+                        const typeName = s.is_day_off === 0
+                            ? ''
+                            : (s.is_paid_leave ? '(有休)' : '(希望休)');
 
                         html += `<div style="cursor:pointer;"
                                  onclick="applyRequestShift(${s.user_id}, '${start}', '${end}', ${s.is_day_off}, ${s.is_paid_leave})">
@@ -181,12 +200,27 @@ document.addEventListener('DOMContentLoaded', function(){
             });
     };
 
+    // ★ 希望休・有休・出勤を正しく反映させる
     window.applyRequestShift = function(userId, start, end, isDayOff, isPaidLeave){
         document.getElementById('shift_user').value = userId;
         document.getElementById('shift_start').value = start;
         document.getElementById('shift_end').value   = end;
-        document.getElementById('shift_type').value  = isDayOff;
-        document.getElementById('is_paid_leave').value = isPaidLeave ? 1 : 0;
+
+        if (isPaidLeave) {
+            document.getElementById('shift_type').value = 2;
+            document.getElementById('is_day_off').value = 0;
+            document.getElementById('is_paid_leave').value = 1;
+        }
+        else if (isDayOff) {
+            document.getElementById('shift_type').value = 1;
+            document.getElementById('is_day_off').value = 1;
+            document.getElementById('is_paid_leave').value = 0;
+        }
+        else {
+            document.getElementById('shift_type').value = 0;
+            document.getElementById('is_day_off').value = 0;
+            document.getElementById('is_paid_leave').value = 0;
+        }
     };
 
     window.editShift = function(id){
@@ -200,8 +234,22 @@ document.addEventListener('DOMContentLoaded', function(){
                 document.getElementById('shift_user').value = shift.user_id;
                 document.getElementById('shift_start').value = extractTime(shift.start_time);
                 document.getElementById('shift_end').value   = extractTime(shift.end_time);
-                document.getElementById('shift_type').value  = shift.is_day_off;
-                document.getElementById('is_paid_leave').value = shift.is_paid_leave ? 1 : 0;
+
+                if (shift.is_paid_leave) {
+                    document.getElementById('shift_type').value = 2;
+                    document.getElementById('is_day_off').value = 0;
+                    document.getElementById('is_paid_leave').value = 1;
+                }
+                else if (shift.is_day_off) {
+                    document.getElementById('shift_type').value = 1;
+                    document.getElementById('is_day_off').value = 1;
+                    document.getElementById('is_paid_leave').value = 0;
+                }
+                else {
+                    document.getElementById('shift_type').value = 0;
+                    document.getElementById('is_day_off').value = 0;
+                    document.getElementById('is_paid_leave').value = 0;
+                }
 
                 document.getElementById('deleteBtn').style.display = 'inline-block';
                 document.getElementById('existing_shifts').innerHTML = '';

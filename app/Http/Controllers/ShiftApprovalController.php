@@ -321,8 +321,9 @@ class ShiftApprovalController extends Controller
         ));
     }
 
-    public function calendarSave(Request $request, Company $company)
-{
+ public function calendarSave(Request $request, Company $company)
+{\Log::debug('calendarSave request', $request->all());
+
     try {
         $userId  = $request->input('user_id');
         $storeId = $request->input('store_id');
@@ -332,15 +333,15 @@ class ShiftApprovalController extends Controller
             return response()->json(['status' => 'error', 'message' => 'ユーザーIDがありません']);
         }
 
-        // boolean で取得
-        $isDayOff    = $request->boolean('is_day_off', false);       // 希望休
-        $isPaidLeave = $request->boolean('is_paid_leave', false);    // 有休
+        // boolean 値
+        $isDayOff    = $request->boolean('is_day_off', false);
+        $isPaidLeave = $request->boolean('is_paid_leave', false);
 
+        // 時刻設定
         $startTime = null;
         $endTime   = null;
 
         if (!$isDayOff && !$isPaidLeave) {
-            // 出勤の場合のみ start/end を設定
             $start = $request->input('start_time') ? substr($request->input('start_time'), -5) : null;
             $end   = $request->input('end_time')   ? substr($request->input('end_time'),   -5) : null;
 
@@ -348,14 +349,14 @@ class ShiftApprovalController extends Controller
             if ($end)   $endTime   = "$date $end:00";
         }
 
-        // DB に保存（boolean → 1/0 で確実に保存）
+        // ★ 修正ポイント：検索キーから store_id を外す
         $shiftModel = Shift::updateOrCreate(
             [
                 'user_id'    => $userId,
                 'shift_date' => $date,
-                'store_id'   => $storeId,
             ],
             [
+                'store_id'      => $storeId,
                 'start_time'    => $startTime,
                 'end_time'      => $endTime,
                 'is_day_off'    => $isDayOff ? 1 : 0,
@@ -378,6 +379,7 @@ class ShiftApprovalController extends Controller
         ]);
     }
 }
+
 
 
     public function getRequestsByDate($companyId, $date)
