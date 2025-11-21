@@ -95,20 +95,28 @@ class Attendance extends Model
         return 0;
     }
 
-    // ----------------------------
-    // ⏱ 勤務総分数
-    // ----------------------------
-    public function getTotalWorkMinutes(): int
-    {
-        if (!$this->clock_in || !$this->clock_out) return 0;
+ // ----------------------------
+// ⏱ 勤務総分数
+// ----------------------------
+public function getTotalWorkMinutes(): int
+{
+    if (!$this->clock_in || !$this->clock_out) return 0;
 
-        $in  = $this->parseTimeWithOverflow($this->date, $this->clock_in);
-        $out = $this->parseTimeWithOverflow($this->date, $this->clock_out);
-        if ($out->lessThanOrEqualTo($in)) $out->addDay();
+    $in  = $this->parseTimeWithOverflow($this->date, $this->clock_in);
+    $out = $this->parseTimeWithOverflow($this->date, $this->clock_out);
 
-        $breakMinutes = $this->break_minutes ?? $this->calculateBreakMinutes();
-        return max(0, $in->diffInMinutes($out) - $breakMinutes);
+    $diffMinutes = $in->diffInMinutes($out);
+
+    // 出勤と退勤が同じ、または退勤が前の場合は0分にする
+    if ($diffMinutes <= 0) {
+        return 0;
     }
+
+    $breakMinutes = $this->break_minutes ?? $this->calculateBreakMinutes();
+
+    return max(0, $diffMinutes - $breakMinutes);
+}
+
 
     // ----------------------------
     // 🌙 深夜勤務分
@@ -126,10 +134,7 @@ class Attendance extends Model
             : 0;
     }
 
-    // ----------------------------
-    // 💴 給与計算
-    // ----------------------------
- // ----------------------------
+
 // 💴 給与計算（有給は8時間分）
 // ----------------------------
 public function getPayAttribute(): int
@@ -144,24 +149,23 @@ public function getPayAttribute(): int
         return (int) round($wage * 8);
     }
 
-    // 出勤無し → 0円
-    if (!$this->clock_in || !$this->clock_out) {
+    // 出勤無しまたは勤務総分数0 → 0円
+    $totalMinutes = $this->getTotalWorkMinutes();
+    if ($totalMinutes <= 0) {
         return 0;
     }
 
-    // 通常計算
     $in  = $this->parseTimeWithOverflow($this->date, $this->clock_in);
     $out = $this->parseTimeWithOverflow($this->date, $this->clock_out);
-
     if ($out->lessThanOrEqualTo($in)) {
         $out->addDay();
     }
 
-    $totalMinutes = $this->getTotalWorkMinutes();
+    // 夜勤時間計算
     $nightMinutes = $this->calculateNightMinutes($in, $out);
     $normalMinutes = max(0, $totalMinutes - $nightMinutes);
 
-    $hourlyWage = $this->effective_wage;
+    $hourlyWage = $this->effective_wage ?? $this->hourly_wage ?? 0;
     $normalPay  = ($normalMinutes / 60) * $hourlyWage;
     $nightPay   = ($nightMinutes / 60) * $hourlyWage * 1.25;
 
