@@ -15,7 +15,6 @@
         <button type="submit" class="btn btn-primary">絞り込み</button>
     </form>
 
-    <a href="{{ route('company.dashboard', $company->id) }}" class="btn btn-outline-secondary">← ダッシュボード</a>
     <table class="table table-bordered">
         <thead>
             <tr>

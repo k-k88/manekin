@@ -204,16 +204,11 @@ if ($shift) {
     if ($attendance->clock_out)
         return "⚠️ すでに退勤済みです。";
 
-    // 🔥 シフトがある場合は早退チェック
-    if ($shift) {
 
-        if ($now->lt($shiftEnd)) {
-            return "⚠️ シフト終了前のため退勤できません。\n終了時刻：{$shiftEnd->format('H:i')}";
-        }
-    }
 
     // 退勤打刻
-    $attendance->clock_out = now();
+    $attendance->clock_out = now()->format('H:i:s');
+
 
     if ($attendance->break_start && $attendance->break_end) {
         $attendance->break_minutes = $attendance->calculateBreakMinutes();

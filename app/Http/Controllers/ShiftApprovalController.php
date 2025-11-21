@@ -121,53 +121,63 @@ class ShiftApprovalController extends Controller
     $userId = $request->user_id;
     $date   = Carbon::parse(substr($request->date, 0, 10))->format('Y-m-d');
 
-    $shift = Shift::where('user_id', $userId)
-        ->where('shift_date', $date)
-        ->first();
+    // ユーザー存在チェック
+    $targetUser = \App\Models\User::find($userId);
 
-    if (!$shift) {
-        $shift = new Shift();
+    if (!$targetUser) {
+        return response()->json([
+            'status'  => 'error',
+            'message' => '該当するユーザーが存在しません。',
+        ], 400);
     }
 
-    $targetUser = \App\Models\User::find($userId);
+    // 会社のユーザーかチェック（任意だが推奨）
+    if ($targetUser->company_id != $companyId) {
+        return response()->json([
+            'status'  => 'error',
+            'message' => 'このユーザーはこの会社に所属していません。',
+        ], 403);
+    }
+
+    // Shift の作成/取得
+    $shift = Shift::firstOrNew([
+        'user_id' => $userId,
+        'shift_date' => $date,
+    ]);
 
     $shift->user_id    = $userId;
     $shift->store_id   = $targetUser->store_id;
     $shift->shift_date = $date;
     $shift->status     = 'approved';
 
+    // boolean
     $isDayOff    = $request->boolean('is_day_off', false);
     $isPaidLeave = $request->boolean('is_paid_leave', false);
 
     if ($isPaidLeave) {
-        // 有休
-        $shift->is_day_off    = $isDayOff;  // 元の休みフラグは維持
+        $shift->is_day_off    = $isDayOff;
         $shift->is_paid_leave = true;
         $shift->start_time    = null;
         $shift->end_time      = null;
 
     } elseif ($isDayOff) {
-        // 休み
         $shift->is_day_off    = true;
         $shift->is_paid_leave = false;
         $shift->start_time    = null;
         $shift->end_time      = null;
 
     } else {
-        // 出勤
         $shift->is_day_off    = false;
         $shift->is_paid_leave = false;
 
         $start = $request->start_time ? substr($request->start_time, -5) : null;
         $end   = $request->end_time   ? substr($request->end_time,   -5) : null;
 
-        $shift->start_time = $start ? Carbon::parse("$date $start:00")->format('Y-m-d H:i:s') : null;
-        $shift->end_time   = $end   ? Carbon::parse("$date $end:00")->format('Y-m-d H:i:s') : null;
+        $shift->start_time = $start ? Carbon::parse("$date $start:00") : null;
+        $shift->end_time   = $end   ? Carbon::parse("$date $end:00") : null;
 
-        if ($shift->start_time && $shift->end_time &&
-            Carbon::parse($shift->end_time)->lt(Carbon::parse($shift->start_time))) {
-
-            $shift->end_time = Carbon::parse($shift->end_time)->addDay()->format('Y-m-d H:i:s');
+        if ($shift->start_time && $shift->end_time && $shift->end_time < $shift->start_time) {
+            $shift->end_time->addDay();
         }
     }
 
@@ -175,6 +185,7 @@ class ShiftApprovalController extends Controller
 
     return response()->json(['shift' => $shift]);
 }
+
 
 
     // ===============================
