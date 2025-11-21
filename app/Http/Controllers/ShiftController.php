@@ -12,9 +12,6 @@ use App\Models\Company;
 
 class ShiftController extends Controller
 {
-    /**
-     * 🔹 LINEログイン（自動ログイン）
-     */
     public function loginWithLine($line_user_id)
     {
         $user = User::where('line_user_id', $line_user_id)->first();
@@ -27,7 +24,7 @@ class ShiftController extends Controller
     }
 
     /**
-     * 🔹 カレンダー表示
+     * 🔹 カレンダー表示（従業員側）
      */
     public function calendar(User $user, Request $request)
     {
@@ -37,82 +34,50 @@ class ShiftController extends Controller
         $firstDay = Carbon::create($year, $month, 1)->startOfMonth();
         $lastDay  = Carbon::create($year, $month, 1)->endOfMonth();
 
-        // 確定シフト
         $confirmed = Shift::where('user_id', $user->id)
             ->whereBetween('shift_date', [$firstDay, $lastDay])
             ->get()
             ->groupBy(fn($s) => Carbon::parse($s->shift_date)->format('Y-m-d'));
 
-        // 提出中シフト
         $requests = ShiftRequest::where('user_id', $user->id)
             ->whereBetween('shift_date', [$firstDay, $lastDay])
             ->get()
             ->groupBy(fn($s) => Carbon::parse($s->shift_date)->format('Y-m-d'));
 
-        // 🔹 締切・ロック日取得
         [$deadlinePassed, $lockedDates] = $this->getShiftLockInfo($user, $year, $month);
 
         return view('shift.calendar', compact(
-            'user',
-            'year',
-            'month',
-            'firstDay',
-            'lastDay',
-            'confirmed',
-            'requests',
-            'deadlinePassed',
-            'lockedDates'
+            'user','year','month','firstDay','lastDay',
+            'confirmed','requests','deadlinePassed','lockedDates'
         ));
     }
 
     /**
-     * 🔹 時刻文字列を 00:00〜29:59 対応で正規化
-     *   - 入力例: "9", "900", "9:0", "09:00", "25:30"
-     *   - 戻り値: ['date' => 'Y-m-d', 'time' => 'H:i:s'] を作るための情報は normalizeShiftDateTime() 側で使用
+     * 🔹 時刻パース
      */
     protected function normalizeTimeString(?string $input): ?array
     {
-        if ($input === null || $input === '') {
-            return null;
-        }
+        if ($input === null || $input === '') return null;
 
-        $input = trim(str_replace(['：', ' '], [':', ''], $input));
+        $input = trim(str_replace(['：',' '], [':',''], $input));
 
-        // 9   → 09:00
         if (preg_match('/^\d{1,2}$/', $input)) {
-            $h = (int)$input;
-            $m = 0;
+            return ['hour' => (int)$input, 'minute' => 0];
         }
-        // 930 → 09:30
-        elseif (preg_match('/^(\d{1,2})(\d{2})$/', $input, $mch)) {
-            $h = (int)$mch[1];
-            $m = (int)$mch[2];
+        if (preg_match('/^(\d{1,2})(\d{2})$/', $input, $mch)) {
+            return ['hour' => (int)$mch[1], 'minute' => (int)$mch[2]];
         }
-        // 9:0 / 9:30 / 29:30
-        elseif (preg_match('/^(\d{1,2}):(\d{1,2})$/', $input, $mch)) {
-            $h = (int)$mch[1];
-            $m = (int)$mch[2];
-        } else {
-            return null; // 不正
+        if (preg_match('/^(\d{1,2}):(\d{1,2})$/', $input, $mch)) {
+            return ['hour' => (int)$mch[1], 'minute' => (int)$mch[2]];
         }
 
-        if ($h < 0 || $h > 29 || $m < 0 || $m > 59) {
-            return null;
-        }
-
-        return ['hour' => $h, 'minute' => $m];
+        return null;
     }
 
-    /**
-     * 🔹 29:00対応で Y-m-d H:i:s 文字列を作る
-     *   - $baseDate: "Y-m-d"
-     */
     protected function normalizeShiftDateTime(string $baseDate, ?string $time): ?string
     {
         $parsed = $this->normalizeTimeString($time);
-        if ($parsed === null) {
-            return null;
-        }
+        if (!$parsed) return null;
 
         $h = $parsed['hour'];
         $m = $parsed['minute'];
@@ -123,100 +88,74 @@ class ShiftController extends Controller
             $h -= 24;
         }
 
-        $date->setTime($h, $m);
-        return $date->format('Y-m-d H:i:s');
+        return $date->setTime($h, $m)->format('Y-m-d H:i:s');
     }
 
     /**
-     * 🔹 シフト提出禁止日を算出（前半・後半対応）
+     * 🔹 シフト締切ロック判定（half を split と同等に扱う）
      */
-/**
- * 🔹 シフト提出禁止日を算出（前半・後半対応 完全版）
- */
-protected function getShiftLockInfo(User $user, int $year, int $month): array
-{
-    $store = $user->store;
-    if (!$store) return [false, []];
+    protected function getShiftLockInfo(User $user, int $year, int $month): array
+    {
+        $store = $user->store;
+        if (!$store) return [false, []];
 
-    $today      = now();
-    $targetDate = Carbon::create($year, $month, 1);
-    $monthEnd   = $targetDate->copy()->endOfMonth();
+        $today      = now()->copy()->startOfDay();
+        $targetDate = Carbon::create($year, $month, 1)->startOfDay();
+        $monthEnd   = $targetDate->copy()->endOfMonth()->day;
 
-    // ====================================
-    // 🔸 0. 過去の月 → 全日ロック
-    // ====================================
-    if ($targetDate->lt($today->copy()->startOfMonth())) {
-        return [true, range(1, $monthEnd->day)];
-    }
-
-    // ====================================
-    // 🔸 1. 未来の月 → 全日アンロック
-    // ====================================
-    if ($targetDate->gt($today->copy()->startOfMonth())) {
-        return [false, []];
-    }
-
-    // ====================================
-    // 🔸 2. 今月のみ締切を判定
-    // ====================================
-    // --- single モード ---
-    if ($store->shift_deadline_type !== 'split') {
-        $deadline = Carbon::create($year, $month, $store->shift_deadline_day ?? 10);
-
-        if ($today->gt($deadline)) {
-            return [true, range(1, $monthEnd->day)];
+        // --- 過去月 → 全ロック ---
+        if ($targetDate->lt($today->copy()->startOfMonth())) {
+            return [true, range(1, $monthEnd)];
         }
+
+        // --- 未来月 → ロック無し ---
+        if ($targetDate->gt($today->copy()->startOfMonth())) {
+            return [false, []];
+        }
+
+        // ===============================
+        // 🔸 single モード（half/split は対象外）
+        // ===============================
+        if (!in_array($store->shift_deadline_type, ['split', 'half'])) {
+            $deadline = Carbon::create($year, $month, $store->shift_deadline_day ?? 10)->startOfDay();
+            if ($today->gt($deadline)) {
+                return [true, range(1, $monthEnd)];
+            }
+            return [false, []];
+        }
+
+        // ===============================
+        // 🔸 split / half モード（前半・後半）
+        // ===============================
+        $firstLimit  = Carbon::create($year, $month, $store->shift_first_half_deadline  ?? 10)->startOfDay();
+        $secondLimit = Carbon::create($year, $month, $store->shift_second_half_deadline ?? 25)->startOfDay();
+
+        // ☆ 前半締切前 → 後半ロック
+        if ($today->lte($firstLimit)) {
+            return [false, range(16, $monthEnd)];
+        }
+
+        // ☆ 前半締切後〜後半締切前 → 前半ロック
+        if ($today->gt($firstLimit) && $today->lte($secondLimit)) {
+            return [false, range(1, 15)];
+        }
+
+        // ☆ 後半締切後 → 全ロック
+        if ($today->gt($secondLimit)) {
+            return [true, range(1, $monthEnd)];
+        }
+
         return [false, []];
     }
-
-    // --- split モード（前半 / 後半） ---
-    $firstLimit  = Carbon::create($year, $month, $store->shift_first_half_deadline  ?? 10);
-    $secondLimit = Carbon::create($year, $month, $store->shift_second_half_deadline ?? 25);
-
-    // ====================================
-    // 🔸 3. 前半締切前 → 後半はロック（1〜15だけ入力可能）
-    // ====================================
-    if ($today->lte($firstLimit)) {
-        return [
-            false,
-            range(16, $monthEnd->day),
-        ];
-    }
-
-    // ====================================
-    // 🔸 4. 前半締切後〜後半締切前 → 前半をロック（16〜末だけ入力可能）
-    // ====================================
-    if ($today->gt($firstLimit) && $today->lte($secondLimit)) {
-        return [
-            false,
-            range(1, 15),
-        ];
-    }
-
-    // ====================================
-    // 🔸 5. 後半締切後 → 全ロック
-    // ====================================
-    if ($today->gt($secondLimit)) {
-        return [
-            true,
-            range(1, $monthEnd->day),
-        ];
-    }
-
-    return [false, []];
-}
-
-
-
 
     /**
-     * 🔹 1日分保存（※今は JS 側は一括提出のみ使用想定なら未使用でもOK）
+     * 🔹 1日保存
      */
     public function save(Request $request)
     {
         try {
-            $date    = $request->shift_date;
-            $userId  = $request->user_id;
+            $date     = $request->shift_date;
+            $userId   = $request->user_id;
             $isDayOff = $request->boolean('is_day_off');
 
             $user = User::findOrFail($userId);
@@ -224,131 +163,135 @@ protected function getShiftLockInfo(User $user, int $year, int $month): array
             $year  = (int)Carbon::parse($date)->year;
             $month = (int)Carbon::parse($date)->month;
 
-            // 🔹 ロック判定
-            [, $lockedDates] = $this->getShiftLockInfo($user, $year, $month);
+            [, $locked] = $this->getShiftLockInfo($user, $year, $month);
             $day = (int)Carbon::parse($date)->day;
-            if (in_array($day, $lockedDates, true)) {
-                return response()->json(['success' => false, 'message' => '⛔ この日の提出期限は過ぎています。'], 403);
+
+            if (in_array($day, $locked)) {
+                return response()->json(['success'=>false,'message'=>'⛔ この日は締切済みです'],403);
             }
 
-            if (Shift::where('user_id', $userId)->where('shift_date', $baseDate)->exists()) {
-                return response()->json(['success' => false, 'message' => '⚠ この日はすでに確定済みです'], 409);
+            if (Shift::where('user_id',$userId)->where('shift_date',$baseDate)->exists()) {
+                return response()->json(['success'=>false,'message'=>'⚠ 確定済みです'],409);
             }
 
-            $startDateTime = $isDayOff ? null : $this->normalizeShiftDateTime($baseDate, $request->start_time);
-            $endDateTime   = $isDayOff ? null : $this->normalizeShiftDateTime($baseDate, $request->end_time);
+            $start = $isDayOff ? null : $this->normalizeShiftDateTime($baseDate,$request->start_time);
+            $end   = $isDayOff ? null : $this->normalizeShiftDateTime($baseDate,$request->end_time);
 
-            if (!$isDayOff && (!$startDateTime || !$endDateTime)) {
-                return response()->json(['success' => false, 'message' => '時刻の形式が正しくありません。'], 422);
+            if (!$isDayOff && (!$start || !$end)) {
+                return response()->json(['success'=>false,'message'=>'時刻が不正です'],422);
             }
 
             ShiftRequest::updateOrCreate(
-                ['user_id' => $userId, 'shift_date' => $baseDate],
+                ['user_id'=>$userId,'shift_date'=>$baseDate],
                 [
-                    'is_day_off' => $isDayOff,
-                    'start_time' => $startDateTime,
-                    'end_time'   => $endDateTime,
-                    'store_id'   => $user->store_id,
-                    'status'     => 'pending',
+                    'is_day_off'=>$isDayOff,
+                    'start_time'=>$start,
+                    'end_time'=>$end,
+                    'store_id'=>$user->store_id,
+                    'status'=>'pending'
                 ]
             );
 
-            return response()->json(['success' => true]);
+            return response()->json(['success'=>true]);
+
         } catch (\Throwable $e) {
-            \Log::error("Shift save error: " . $e->getMessage());
-            return response()->json(['success' => false], 500);
+            \Log::error("Shift save error: ".$e->getMessage());
+            return response()->json(['success'=>false],500);
         }
     }
 
     /**
-     * 🔹 一括保存（1ヶ月分）
+     * 🔹 一括保存（空欄は公休）
      */
     public function saveAll(Request $request)
     {
         try {
-            $userId = $request->input('user_id');
+            $userId = (int)$request->input('user_id');
             $shifts = $request->input('shifts', []);
 
             $user = User::findOrFail($userId);
 
             if (empty($shifts)) {
-                return response()->json(['success' => false, 'message' => 'シフトが送信されていません。'], 422);
+                return response()->json(['success'=>false,'message'=>'シフトが空です'],422);
             }
 
-            // どの月かを1件目から推定
             $firstKey = array_key_first($shifts);
-            $baseDate = Carbon::parse($firstKey);
-            [, $lockedDates] = $this->getShiftLockInfo($user, (int)$baseDate->year, (int)$baseDate->month);
+            $base = Carbon::parse($firstKey);
+            $year = (int)$base->year;
+            $month = (int)$base->month;
 
-            foreach ($shifts as $date => $s) {
-                $baseDate = Carbon::parse($date)->format('Y-m-d');
-                $day      = (int)Carbon::parse($date)->day;
+            [, $locked] = $this->getShiftLockInfo($user,$year,$month);
 
-                $isDayOff   = !empty($s['is_day_off']);
-                $startInput = $s['start_time'] ?? null;
-                $endInput   = $s['end_time'] ?? null;
+            $monthEnd = Carbon::create($year,$month,1)->endOfMonth()->day;
 
-                // 🔹 締切超過の日はスキップ
-                if (in_array($day, $lockedDates, true)) {
+            for ($d=1; $d <= $monthEnd; $d++) {
+                $dateStr = sprintf("%04d-%02d-%02d",$year,$month,$d);
+
+                if (in_array($d,$locked)) continue;
+
+                if (Shift::where('user_id',$userId)->where('shift_date',$dateStr)->exists()) {
                     continue;
                 }
 
-                // すでに確定済みならスキップ
-                if (Shift::where('user_id', $userId)->where('shift_date', $baseDate)->exists()) {
-                    continue;
+                $s = $shifts[$dateStr] ?? null;
+
+                if ($s) {
+                    $isDayOff = !empty($s['is_day_off']);
+                    $start = $isDayOff ? null : $this->normalizeShiftDateTime($dateStr,$s['start_time'] ?? null);
+                    $end   = $isDayOff ? null : $this->normalizeShiftDateTime($dateStr,$s['end_time'] ?? null);
+
+                    if (!$isDayOff && (!$start || !$end)) continue;
+
+                    ShiftRequest::updateOrCreate(
+                        ['user_id'=>$userId,'shift_date'=>$dateStr],
+                        [
+                            'is_day_off'=>$isDayOff,
+                            'start_time'=>$start,
+                            'end_time'=>$end,
+                            'store_id'=>$user->store_id,
+                            'status'=>'pending'
+                        ]
+                    );
+                } else {
+                    ShiftRequest::updateOrCreate(
+                        ['user_id'=>$userId,'shift_date'=>$dateStr],
+                        [
+                            'is_day_off'=>true,
+                            'start_time'=>null,
+                            'end_time'=>null,
+                            'store_id'=>$user->store_id,
+                            'status'=>'pending'
+                        ]
+                    );
                 }
-
-                $startDateTime = $isDayOff ? null : $this->normalizeShiftDateTime($baseDate, $startInput);
-                $endDateTime   = $isDayOff ? null : $this->normalizeShiftDateTime($baseDate, $endInput);
-
-                if (!$isDayOff && (!$startDateTime || !$endDateTime)) {
-                    // その日だけ飛ばして続行
-                    continue;
-                }
-
-                ShiftRequest::updateOrCreate(
-                    ['user_id' => $userId, 'shift_date' => $baseDate],
-                    [
-                        'is_day_off' => $isDayOff,
-                        'start_time' => $startDateTime,
-                        'end_time'   => $endDateTime,
-                        'store_id'   => $user->store_id,
-                        'status'     => 'pending',
-                    ]
-                );
             }
 
-            return response()->json(['success' => true]);
+            return response()->json(['success'=>true]);
+
         } catch (\Throwable $e) {
-            \Log::error('Shift SaveAll Error: ' . $e->getMessage());
-            return response()->json(['success' => false, 'error' => $e->getMessage()], 500);
+            \Log::error('Shift SaveAll Error: '.$e->getMessage());
+            return response()->json(['success'=>false,'error'=>$e->getMessage()],500);
         }
     }
 
-    /**
-     * 🔹 店長側：提出状況一覧
-     */
     public function requests(Company $company)
     {
         $requests = ShiftRequest::whereIn('user_id', function ($q) use ($company) {
                 $q->select('id')
                   ->from('users')
-                  ->where('company_id', $company->id)
+                  ->where('company_id',$company->id)
                   ->whereNull('deleted_at');
             })
             ->orderBy('shift_date')
             ->get()
             ->groupBy('user_id');
 
-        return view('company.shifts.requests', compact('company', 'requests'));
+        return view('company.shifts.requests', compact('company','requests'));
     }
 
-    /**
-     * 🔹 月単位の提出期限チェック（必要なら他の場所で利用）
-     */
     protected function isShiftDeadlinePassed(User $user, int $year, int $month): bool
     {
-        [$deadlinePassed, ] = $this->getShiftLockInfo($user, $year, $month);
-        return $deadlinePassed;
+        [$allLocked,] = $this->getShiftLockInfo($user, $year, $month);
+        return $allLocked;
     }
 }
