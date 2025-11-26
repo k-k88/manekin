@@ -105,17 +105,25 @@ public function getTotalWorkMinutes(): int
     $in  = $this->parseTimeWithOverflow($this->date, $this->clock_in);
     $out = $this->parseTimeWithOverflow($this->date, $this->clock_out);
 
-    $diffMinutes = $in->diffInMinutes($out);
-
-    // 出勤と退勤が同じ、または退勤が前の場合は0分にする
-    if ($diffMinutes <= 0) {
+    // 出退勤が同じ場合は 0分
+    if ($in->eq($out)) {
         return 0;
     }
+
+    // 日またぎ補正
+    if ($out->lessThan($in)) {
+        $out->addDay();
+    }
+
+    // 総分数計算
+    $diffMinutes = $in->diffInMinutes($out);
+    if ($diffMinutes <= 0) return 0;
 
     $breakMinutes = $this->break_minutes ?? $this->calculateBreakMinutes();
 
     return max(0, $diffMinutes - $breakMinutes);
 }
+
 
 
     // ----------------------------
@@ -174,10 +182,7 @@ public function getPayAttribute(): int
 
 
 
-    // ----------------------------
-    // 🕒 勤務時間（時間単位）
-    // ----------------------------
-   public function getWorkedHoursAttribute(): float
+public function getWorkedHoursAttribute(): float
 {
     $shift = $this->shiftOfDay()->first();
     $isPaidLeave = $shift?->is_paid_leave ?? false;
@@ -187,21 +192,14 @@ public function getPayAttribute(): int
         return 8.0;
     }
 
-    if (!$this->clock_in || !$this->clock_out) return 0;
+    // getTotalWorkMinutes() を利用
+    $minutes = $this->getTotalWorkMinutes();
 
-    $in  = $this->parseTimeWithOverflow($this->date, $this->clock_in);
-    $out = $this->parseTimeWithOverflow($this->date, $this->clock_out);
-
-    if ($out->lessThanOrEqualTo($in)) $out->addDay();
-
-    $breakMinutes = $this->break_minutes ?? $this->calculateBreakMinutes();
-
-    return round(($in->diffInMinutes($out) - $breakMinutes) / 60, 2);
+    return round($minutes / 60, 2);
 }
 
 
-    // ----------------------------
-    // ⏰ 遅刻分（分）
+
 // ----------------------------
 // ⏰ 遅刻分（分）
 // ----------------------------
