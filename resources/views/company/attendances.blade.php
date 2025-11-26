@@ -84,14 +84,12 @@
                             <th>休憩終了</th>
                             <th>勤務時間</th>
                             <th>ステータス</th>
-                            <th class="text-center">更新</th>
-                            <th class="text-center">削除</th>
+                            <th class="text-center">操作</th>
                         </tr>
                     </thead>
                     <tbody>
                         @forelse ($attendances as $attendance)
                             @php
-                                // 時刻は H:i 表記
                                 $formatTime = fn($t) => $t ? \Carbon\Carbon::parse($t)->format('H:i') : '';
                             @endphp
                             <tr>
@@ -117,7 +115,7 @@
                                         <input type="text" name="break_end" class="form-control form-control-sm time-input" value="{{ $formatTime($attendance->break_end) }}">
                                 </td>
 
-                                {{-- ★ 勤務時間 → 「○時間○分」表示に変更 --}}
+                                {{-- 勤務時間 --}}
                                 <td>
                                     @if ($attendance->clock_in && $attendance->clock_out)
                                         @php
@@ -140,18 +138,25 @@
                                     @endif
                                 </td>
 
+                                {{-- 操作ボタン（サイズ揃え） --}}
                                 <td class="text-center">
-                                        <button type="submit" class="btn btn-sm btn-primary">更新</button>
-                                    </form>
+                                    <div class="d-flex gap-2 justify-content-center flex-wrap" style="max-width: 160px; margin: auto;">
+                                        {{-- 更新 --}}
+                                        <form action="{{ route('company.attendances.update', ['company' => $company->id, 'attendance' => $attendance->id]) }}" method="POST" class="flex-fill">
+                                            @csrf
+                                            @method('PUT')
+                                            <button type="submit" class="btn btn-primary btn-sm w-100">更新</button>
+                                        </form>
+
+                                        {{-- 削除 --}}
+                                        <form action="{{ route('company.attendances.destroy', ['company' => $company->id, 'attendance' => $attendance->id]) }}" method="POST" onsubmit="return confirm('この勤怠データを削除しますか？');" class="flex-fill">
+                                            @csrf
+                                            @method('DELETE')
+                                            <button type="submit" class="btn btn-outline-danger btn-sm w-100">削除</button>
+                                        </form>
+                                    </div>
                                 </td>
 
-                                <td class="text-center">
-                                    <form action="{{ route('company.attendances.destroy', ['company' => $company->id, 'attendance' => $attendance->id]) }}" method="POST" onsubmit="return confirm('この勤怠データを削除しますか？');">
-                                        @csrf
-                                        @method('DELETE')
-                                        <button type="submit" class="btn btn-sm btn-outline-danger">削除</button>
-                                    </form>
-                                </td>
                             </tr>
                         @empty
                             <tr>
@@ -171,17 +176,12 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('.time-input').forEach(input => {
         input.addEventListener('input', function(e) {
             let val = e.target.value.replace(/[^0-9]/g, '');
-
             if (val.length > 4) val = val.substring(0, 4);
 
             if (val.length >= 3) {
                 let h = val.substring(0, 2);
                 let m = val.substring(2, 4);
-
-                if (m && parseInt(m) > 59) {
-                    m = '59';
-                }
-
+                if (m && parseInt(m) > 59) m = '59';
                 val = h + ':' + (m ?? '');
             }
 

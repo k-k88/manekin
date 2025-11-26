@@ -274,65 +274,72 @@ class PayrollController extends Controller
     /**
      * CSV出力
      */
-    public function payrollsCsv(Company $company)
-    {
-        $attendances = Attendance::with('user')
-            ->whereHas('user', fn($q) => $q->where('company_id', $company->id))
-            ->orderBy('date', 'desc')
-            ->get();
- 
-        if ($attendances->isEmpty()) {
-            return back()->with('error', '出力できる勤怠データがありません。');
-        }
- 
-        $csvData = [];
-        $csvData[] = ['社員名','日付','出勤時刻','退勤時刻','勤務時間(時間)','休憩時間(時間)','有給','時給(円)','支給額(円)'];
- 
-        foreach ($attendances as $a) {
-            $baseDate = Carbon::parse($a->date)->format('Y-m-d');
- 
-            $clockIn  = $a->clock_in ? Carbon::parse("$baseDate {$a->clock_in}") : null;
-            $clockOut = $a->clock_out ? Carbon::parse("$baseDate {$a->clock_out}") : null;
- 
-            $totalMinutes = $clockIn && $clockOut ? $clockIn->diffInMinutes($clockOut) : 0;
-            $breakMinutes = $a->break_minutes ?? 0;
-            $workedMinutes = max(0, $totalMinutes - $breakMinutes);
- 
-            $wage = WageHistory::where('user_id', $a->user_id)
-                ->where('effective_from', '<=', $a->date)
-                ->where(fn($q) => $q->whereNull('end_date')->orWhere('end_date', '>=', $a->date))
-                ->orderByDesc('effective_from')
-                ->first();
- 
-            $hourlyWage = $wage->hourly_wage ?? $a->user->wage ?? 0;
- 
-            $pay = $a->is_paid_leave ? 8 * $hourlyWage : round(($workedMinutes / 60) * $hourlyWage);
- 
-            $csvData[] = [
-                $a->user->name,
-                $baseDate,
-                $a->clock_in ?? '-',
-                $a->clock_out ?? '-',
-                round($workedMinutes / 60, 2),
-                round(($a->break_minutes ?? 0) / 60, 2),
-                $a->is_paid_leave ? '有給' : '-',
-                $hourlyWage,
-                $pay,
-            ];
-        }
- 
-        $filename = 'payroll_' . now()->format('Ymd_His') . '.csv';
-        $csv = "\xEF\xBB\xBF";
- 
-        foreach ($csvData as $row) {
-            $csv .= implode(',', $row) . "\n";
-        }
- 
-        return response($csv)
-            ->header('Content-Type', 'text/csv; charset=UTF-8')
-            ->header('Content-Disposition', "attachment; filename={$filename}");
+   public function payrollsCsv(Company $company)
+{
+    $attendances = Attendance::with('user')
+        ->whereHas('user', fn($q) => $q->where('company_id', $company->id))
+        ->orderBy('date', 'desc')
+        ->get();
+
+    if ($attendances->isEmpty()) {
+        return back()->with('error', '出力できる勤怠データがありません。');
     }
- 
+
+    $csvData = [];
+    $csvData[] = ['社員名','日付','出勤時刻','退勤時刻','勤務時間(時間)','休憩時間(時間)','有給','時給(円)','支給額(円)'];
+
+    foreach ($attendances as $a) {
+        $baseDate = Carbon::parse($a->date)->format('Y-m-d');
+
+        $clockIn  = $a->clock_in ? Carbon::parse("$baseDate {$a->clock_in}") : null;
+        $clockOut = $a->clock_out ? Carbon::parse("$baseDate {$a->clock_out}") : null;
+
+        $totalMinutes = $clockIn && $clockOut ? $clockIn->diffInMinutes($clockOut) : 0;
+        $breakMinutes = $a->break_minutes ?? 0;
+        $workedMinutes = max(0, $totalMinutes - $breakMinutes);
+
+        $wage = WageHistory::where('user_id', $a->user_id)
+            ->where('effective_from', '<=', $a->date)
+            ->where(fn($q) => $q->whereNull('end_date')->orWhere('end_date', '>=', $a->date))
+            ->orderByDesc('effective_from')
+            ->first();
+
+        $hourlyWage = $wage->hourly_wage ?? $a->user->wage ?? 0;
+
+        $pay = $a->is_paid_leave ? 8 * $hourlyWage : round(($workedMinutes / 60) * $hourlyWage);
+
+        // ★ 勤務時間と休憩時間を「○時間○分」形式に変更
+        $workedHours = floor($workedMinutes / 60);
+        $workedMins = $workedMinutes % 60;
+
+        $breakHours = floor($breakMinutes / 60);
+        $breakMins = $breakMinutes % 60;
+
+        $csvData[] = [
+            $a->user->name,
+            $baseDate,
+            $a->clock_in ?? '-',
+            $a->clock_out ?? '-',
+            "{$workedHours}時間{$workedMins}分",
+            "{$breakHours}時間{$breakMins}分",
+            $a->is_paid_leave ? '有給' : '-',
+            $hourlyWage,
+            $pay,
+        ];
+    }
+
+    $filename = 'payroll_' . now()->format('Ymd_His') . '.csv';
+    $csv = "\xEF\xBB\xBF";
+
+    foreach ($csvData as $row) {
+        $csv .= implode(',', $row) . "\n";
+    }
+
+    return response($csv)
+        ->header('Content-Type', 'text/csv; charset=UTF-8')
+        ->header('Content-Disposition', "attachment; filename={$filename}");
+}
+
     /**
      * 再計算
      */
