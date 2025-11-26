@@ -91,7 +91,8 @@
                     <tbody>
                         @forelse ($attendances as $attendance)
                             @php
-                                $formatTime = fn($t) => $t ? \Carbon\Carbon::parse($t)->format('H:i:s') : '';
+                                // 時刻は H:i 表記
+                                $formatTime = fn($t) => $t ? \Carbon\Carbon::parse($t)->format('H:i') : '';
                             @endphp
                             <tr>
                                 <td class="text-nowrap">{{ $attendance->user->name }}</td>
@@ -116,9 +117,14 @@
                                         <input type="text" name="break_end" class="form-control form-control-sm time-input" value="{{ $formatTime($attendance->break_end) }}">
                                 </td>
 
+                                {{-- ★ 勤務時間 → 「○時間○分」表示に変更 --}}
                                 <td>
                                     @if ($attendance->clock_in && $attendance->clock_out)
-                                        <span class="fw-bold">{{ number_format($attendance->worked_hours, 2) }}</span> 時間
+                                        @php
+                                            $hours = floor($attendance->worked_hours);
+                                            $minutes = round(($attendance->worked_hours - $hours) * 60);
+                                        @endphp
+                                        <span class="fw-bold">{{ $hours }}時間{{ $minutes }}分</span>
                                     @else
                                         <span class="text-muted">-</span>
                                     @endif
@@ -159,13 +165,26 @@
     </div>
 </div>
 
-{{-- 時間入力を自動フォーマット --}}
+{{-- 時間入力補正 --}}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('.time-input').forEach(input => {
         input.addEventListener('input', function(e) {
-            let val = e.target.value.replace(/\D/g, '');
-            if (val.length >= 3) val = val.substring(0, 2) + ':' + val.substring(2, 4);
+            let val = e.target.value.replace(/[^0-9]/g, '');
+
+            if (val.length > 4) val = val.substring(0, 4);
+
+            if (val.length >= 3) {
+                let h = val.substring(0, 2);
+                let m = val.substring(2, 4);
+
+                if (m && parseInt(m) > 59) {
+                    m = '59';
+                }
+
+                val = h + ':' + (m ?? '');
+            }
+
             e.target.value = val;
         });
     });
