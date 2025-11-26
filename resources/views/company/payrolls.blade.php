@@ -73,11 +73,26 @@
                         {{-- 退勤 --}}
                         <td>{{ $attendance->clock_out_for_view }}</td>
 
-                        {{-- 勤務時間 --}}
-                        <td>{{ number_format($attendance->hours, 2) }} h</td>
+                        {{-- 勤務時間（24時間なら0表示、○時間○分形式） --}}
+                        <td>
+                            @php
+                                $hours = $attendance->hours;
+                                if ($hours == 24) $hours = 0;
+                                $h = floor($hours);
+                                $m = round(($hours - $h) * 60);
+                            @endphp
+                            {{ $h }}時間{{ $m }}分
+                        </td>
 
-                        {{-- 休憩時間 --}}
-                        <td>{{ number_format(($attendance->break_minutes ?? 0) / 60, 2) }} h</td>
+                        {{-- 休憩時間（○時間○分形式） --}}
+                        <td>
+                            @php
+                                $break_hours = ($attendance->break_minutes ?? 0) / 60;
+                                $bh = floor($break_hours);
+                                $bm = round(($break_hours - $bh) * 60);
+                            @endphp
+                            {{ $bh }}時間{{ $bm }}分
+                        </td>
 
                         {{-- 有給 --}}
                         <td>{{ $attendance->is_paid_leave_for_view ? '有休' : '-' }}</td>

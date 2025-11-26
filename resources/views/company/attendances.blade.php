@@ -84,8 +84,7 @@
                             <th>休憩終了</th>
                             <th>勤務時間</th>
                             <th>ステータス</th>
-                            <th class="text-center">更新</th>
-                            <th class="text-center">削除</th>
+                            <th class="text-center">操作</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -117,7 +116,7 @@
                                         <input type="text" name="break_end" class="form-control form-control-sm time-input" value="{{ $formatTime($attendance->break_end) }}">
                                 </td>
 
-                                {{-- ★ 勤務時間 → 「○時間○分」表示に変更 --}}
+                                {{-- ★ 勤務時間 → 「○時間○分」表示 --}}
                                 <td>
                                     @if ($attendance->clock_in && $attendance->clock_out)
                                         @php
@@ -140,18 +139,26 @@
                                     @endif
                                 </td>
 
+                                {{-- ◎ ここだけ修正（更新＋削除を1セルに統合） --}}
                                 <td class="text-center">
+                                    <div class="d-flex justify-content-center gap-2">
+
+                                        {{-- 更新 --}}
                                         <button type="submit" class="btn btn-sm btn-primary">更新</button>
                                     </form>
+
+                                        {{-- 削除 --}}
+                                        <form action="{{ route('company.attendances.destroy', ['company' => $company->id, 'attendance' => $attendance->id]) }}"
+                                              method="POST"
+                                              onsubmit="return confirm('この勤怠データを削除しますか？');">
+                                            @csrf
+                                            @method('DELETE')
+                                            <button type="submit" class="btn btn-sm btn-outline-danger">削除</button>
+                                        </form>
+
+                                    </div>
                                 </td>
 
-                                <td class="text-center">
-                                    <form action="{{ route('company.attendances.destroy', ['company' => $company->id, 'attendance' => $attendance->id]) }}" method="POST" onsubmit="return confirm('この勤怠データを削除しますか？');">
-                                        @csrf
-                                        @method('DELETE')
-                                        <button type="submit" class="btn btn-sm btn-outline-danger">削除</button>
-                                    </form>
-                                </td>
                             </tr>
                         @empty
                             <tr>
