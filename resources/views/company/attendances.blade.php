@@ -21,14 +21,12 @@
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         </div>
     @endif
-
     @if (session('error'))
         <div class="alert alert-danger alert-dismissible fade show shadow-sm" role="alert">
             <i class="bi bi-exclamation-triangle me-2"></i>{{ session('error') }}
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         </div>
     @endif
-
     @if ($errors->any())
         <div class="alert alert-danger alert-dismissible fade show shadow-sm" role="alert">
             <ul class="mb-0">
@@ -86,75 +84,72 @@
                             <th>休憩終了</th>
                             <th>勤務時間</th>
                             <th>ステータス</th>
-                            <th class="text-center">操作</th>
+                            <th class="text-center">更新</th>
+                            <th class="text-center">削除</th>
                         </tr>
                     </thead>
                     <tbody>
                         @forelse ($attendances as $attendance)
-
                             @php
-                                $displayClockIn    = $attendance->clock_in  ? \Carbon\Carbon::parse($attendance->clock_in)->format('H:i') : '';
-                                $displayClockOut   = $attendance->clock_out ? \Carbon\Carbon::parse($attendance->clock_out)->format('H:i') : '';
-                                $displayBreakStart = $attendance->break_start ? \Carbon\Carbon::parse($attendance->break_start)->format('H:i') : '';
-                                $displayBreakEnd   = $attendance->break_end   ? \Carbon\Carbon::parse($attendance->break_end)->format('H:i')   : '';
+                                $formatTime = fn($t) => $t ? \Carbon\Carbon::parse($t)->format('H:i:s') : '';
                             @endphp
-
                             <tr>
-                                {{-- ======= フォーム開始（tr の直下）======= --}}
-                                <form action="{{ route('company.attendances.update', ['company' => $company->id, 'attendance' => $attendance->id]) }}" method="POST">
-                                    @csrf
-                                    @method('PUT')
+                                <td class="text-nowrap">{{ $attendance->user->name }}</td>
+                                <td>{{ optional($attendance->date)->format('Y-m-d') }}</td>
 
-                                    <td class="text-nowrap">{{ $attendance->user->name }}</td>
-                                    <td>{{ optional($attendance->date)->format('Y-m-d') }}</td>
+                                <td>
+                                    <form action="{{ route('company.attendances.update', ['company' => $company->id, 'attendance' => $attendance->id]) }}" method="POST">
+                                        @csrf
+                                        @method('PUT')
+                                        <input type="text" name="clock_in" class="form-control form-control-sm time-input" value="{{ $formatTime($attendance->clock_in) }}">
+                                </td>
 
-                                    <td><input type="text" name="clock_in" class="form-control form-control-sm time-input" value="{{ $displayClockIn }}"></td>
-                                    <td><input type="text" name="clock_out" class="form-control form-control-sm time-input" value="{{ $displayClockOut }}"></td>
-                                    <td><input type="text" name="break_start" class="form-control form-control-sm time-input" value="{{ $displayBreakStart }}"></td>
-                                    <td><input type="text" name="break_end" class="form-control form-control-sm time-input" value="{{ $displayBreakEnd }}"></td>
+                                <td>
+                                        <input type="text" name="clock_out" class="form-control form-control-sm time-input" value="{{ $formatTime($attendance->clock_out) }}">
+                                </td>
 
-                                    <td>
-                                        @if ($attendance->clock_in && $attendance->clock_out)
-                                            <span class="fw-bold">{{ number_format($attendance->worked_hours, 2) }}</span> 時間
-                                        @else
-                                            <span class="text-muted">-</span>
-                                        @endif
-                                    </td>
+                                <td>
+                                        <input type="text" name="break_start" class="form-control form-control-sm time-input" value="{{ $formatTime($attendance->break_start) }}">
+                                </td>
 
-                                    <td>
-                                        @if ($attendance->status === 'approved')
-                                            <span class="badge bg-success">承認済</span>
-                                        @elseif ($attendance->status === 'pending')
-                                            <span class="badge bg-warning text-dark">申請中</span>
-                                        @else
-                                            <span class="badge bg-secondary">未申請</span>
-                                        @endif
-                                    </td>
+                                <td>
+                                        <input type="text" name="break_end" class="form-control form-control-sm time-input" value="{{ $formatTime($attendance->break_end) }}">
+                                </td>
 
-                                    <td class="text-center">
-                                        <div class="d-flex justify-content-center gap-1">
-                                            <button type="submit" class="btn btn-sm btn-primary">更新</button>
-                                        </div>
-                                    </td>
+                                <td>
+                                    @if ($attendance->clock_in && $attendance->clock_out)
+                                        <span class="fw-bold">{{ number_format($attendance->worked_hours, 2) }}</span> 時間
+                                    @else
+                                        <span class="text-muted">-</span>
+                                    @endif
+                                </td>
 
-                                </form>
-                                {{-- ======= フォーム終了 ======= --}}
+                                <td>
+                                    @if ($attendance->status === 'approved')
+                                        <span class="badge bg-success">承認済</span>
+                                    @elseif ($attendance->status === 'pending')
+                                        <span class="badge bg-warning text-dark">申請中</span>
+                                    @else
+                                        <span class="badge bg-secondary">未申請</span>
+                                    @endif
+                                </td>
 
-                                {{-- 削除フォーム --}}
                                 <td class="text-center">
-                                    <form action="{{ route('company.attendances.destroy', ['company' => $company->id, 'attendance' => $attendance->id]) }}"
-                                          method="POST"
-                                          onsubmit="return confirm('この勤怠データを削除しますか？');">
+                                        <button type="submit" class="btn btn-sm btn-primary">更新</button>
+                                    </form>
+                                </td>
+
+                                <td class="text-center">
+                                    <form action="{{ route('company.attendances.destroy', ['company' => $company->id, 'attendance' => $attendance->id]) }}" method="POST" onsubmit="return confirm('この勤怠データを削除しますか？');">
                                         @csrf
                                         @method('DELETE')
                                         <button type="submit" class="btn btn-sm btn-outline-danger">削除</button>
                                     </form>
                                 </td>
                             </tr>
-
                         @empty
                             <tr>
-                                <td colspan="9" class="text-center text-muted py-4">勤怠データがありません。</td>
+                                <td colspan="10" class="text-center text-muted py-4">勤怠データがありません。</td>
                             </tr>
                         @endforelse
                     </tbody>
@@ -164,7 +159,7 @@
     </div>
 </div>
 
-{{-- 自動フォーマット --}}
+{{-- 時間入力を自動フォーマット --}}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('.time-input').forEach(input => {
