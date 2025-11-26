@@ -10,6 +10,7 @@ use App\Http\Controllers\ShiftApprovalController;
 use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\AttendanceController;
 use App\Http\Controllers\StoreController;
+use App\Http\Controllers\UserDashboardController;
 
 // ★ システム管理者用
 use App\Http\Controllers\Admin\AdminController;
@@ -61,7 +62,10 @@ Route::middleware(['auth'])->group(function () {
             Route::resource('users', AdminUserController::class);
         });
 
-
+  Route::get(
+        '/company/{company}/employees/{employee}/dashboard',
+        [UserDashboardController::class, 'index']
+    )->name('company.employees.dashboard');
 
     // ================================
     // ★ 会社管理者ルート
@@ -97,6 +101,8 @@ Route::middleware(['auth'])->group(function () {
         Route::put('/employees/{employee}', [EmployeeController::class, 'updateEmployee'])->name('employees.update');
         Route::delete('/employees/{employee}', [EmployeeController::class, 'deleteEmployee'])->name('employees.delete');
         Route::put('/employees/{employee}/update-wage', [EmployeeController::class, 'updateWage'])->name('employees.updateWage');
+        // 従業員ごとのダッシュボード（勤怠＋給与グラフ）
+    
 
 
             // ==============================
