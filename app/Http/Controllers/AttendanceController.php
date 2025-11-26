@@ -120,11 +120,15 @@ class AttendanceController extends Controller
     ]);
 
     try {
-        // ① まず基本情報の確定
+        /* ==============================
+           ① 基本情報
+        ============================== */
         $user = User::findOrFail($request->user_id);
         $date = Carbon::parse($request->date);
 
-        // ② 時刻正規化
+        /* ==============================
+           ② 時刻正規化
+        ============================== */
         $normalizeTime = function ($input) {
             $input = trim(str_replace(['：', '.', ' '], [':', ':', ''], $input));
             if (preg_match('/^\d{1,2}$/', $input)) return str_pad($input, 2, '0', STR_PAD_LEFT) . ':00';
@@ -141,15 +145,11 @@ class AttendanceController extends Controller
             throw new Exception('時刻の形式が正しくありません。');
         }
 
-        // ③ Carbon 時間化
+        /* ==============================
+           ③ Carbon 時間化（29:00対応）
+        ============================== */
         [$hIn, $mIn]   = array_map('intval', explode(':', $clockInStr));
         [$hOut, $mOut] = array_map('intval', explode(':', $clockOutStr));
-
-        foreach ([[$hIn, $mIn], [$hOut, $mOut]] as [$h, $m]) {
-            if ($h < 0 || $h > 29 || $m < 0 || $m > 59) {
-                throw new Exception('時刻は00:00〜29:59の範囲で入力してください。');
-            }
-        }
 
         $clockInTime  = $date->copy();
         if ($hIn >= 24) $clockInTime->addDay();
@@ -161,11 +161,15 @@ class AttendanceController extends Controller
 
         if ($clockOutTime->lessThan($clockInTime)) $clockOutTime->addDay();
 
-        // ④ ここで初めて遅刻・早退判定を呼ぶ
+        /* ==============================
+           ④ 遅刻早退判定
+        ============================== */
         [$lateFlag, $earlyLeaveFlag] =
             $this->computeLateEarlyFlags($user, $date, $clockInTime, $clockOutTime);
 
-        // ⑤ 休憩計算
+        /* ==============================
+           ⑤ 休憩
+        ============================== */
         $breakMinutes = 0;
         $breakStartTime = null;
         $breakEndTime = null;
@@ -173,9 +177,6 @@ class AttendanceController extends Controller
         if ($request->break_start && $request->break_end) {
             $breakStartStr = $normalizeTime($request->break_start);
             $breakEndStr   = $normalizeTime($request->break_end);
-            if (!$breakStartStr || !$breakEndStr) {
-                throw new Exception('休憩時刻の形式が正しくありません。');
-            }
 
             [$hBs, $mBs] = array_map('intval', explode(':', $breakStartStr));
             [$hBe, $mBe] = array_map('intval', explode(':', $breakEndStr));
@@ -193,27 +194,34 @@ class AttendanceController extends Controller
             $breakMinutes = $breakStartTime->diffInMinutes($breakEndTime);
         }
 
-        // ⑥ 登録
-        Attendance::create([
-            'company_id'      => $company->id,
-            'user_id'         => $user->id,
-            'date'            => $date->format('Y-m-d'),
-            'clock_in'        => $clockInTime->format('H:i:s'),
-            'clock_out'       => $clockOutTime->format('H:i:s'),
-            'break_start'     => $breakStartTime?->format('H:i:s'),
-            'break_end'       => $breakEndTime?->format('H:i:s'),
-            'break_minutes'   => $breakMinutes,
-            'late_flag'       => $lateFlag,
-            'early_leave_flag'=> $earlyLeaveFlag,
-        ]);
+        /* ==============================
+           ⑥ 保存 → updateOrCreate に変更！
+        ============================== */
+        Attendance::updateOrCreate(
+            [
+                'user_id' => $user->id,
+                'date'    => $date->format('Y-m-d'),    // ← UNIQUE キー
+            ],
+            [
+                'company_id'      => $company->id,
+                'clock_in'        => $clockInTime->format('H:i:s'),
+                'clock_out'       => $clockOutTime->format('H:i:s'),
+                'break_start'     => $breakStartTime?->format('H:i:s'),
+                'break_end'       => $breakEndTime?->format('H:i:s'),
+                'break_minutes'   => $breakMinutes,
+                'late_flag'       => $lateFlag,
+                'early_leave_flag'=> $earlyLeaveFlag,
+            ]
+        );
 
         return redirect()->route('company.attendances', $company)
-            ->with('success', '勤怠を追加しました。');
+            ->with('success', '勤怠を登録しました（既存データは上書きされました）。');
 
     } catch (Exception $e) {
         return back()->withInput()->withErrors(['clock_in' => $e->getMessage()]);
     }
 }
+
 
 
     /**
