@@ -22,11 +22,8 @@
                 <th>社員名</th>
                 <th>出勤</th>
                 <th>退勤</th>
-
-                {{-- ★ シフト時間を追加 --}}
                 <th>シフト開始</th>
                 <th>シフト終了</th>
-
                 <th>遅刻</th>
                 <th>早退</th>
             </tr>
@@ -34,10 +31,8 @@
         <tbody>
             @foreach($attendances as $attendance)
             @php
-                // Controllerでwith('shiftOfDay')してるので null安全にできる
                 $shift = $attendance->shiftOfDay ?? null;
             @endphp
-
             <tr>
                 <td>{{ $attendance->date->format('Y-m-d') }}</td>
                 <td>{{ $attendance->user->name }}</td>
@@ -56,7 +51,7 @@
                         : '' }}
                 </td>
 
-                {{-- ★ シフト開始 --}}
+                {{-- シフト開始 --}}
                 <td>
                     @if ($shift && !$shift->is_day_off)
                         {{ \Carbon\Carbon::parse($shift->start_time)->format('H:i') }}
@@ -65,7 +60,7 @@
                     @endif
                 </td>
 
-                {{-- ★ シフト終了（29:00対応） --}}
+                {{-- シフト終了 --}}
                 <td>
                     @if ($shift && !$shift->is_day_off)
                         {{ \Carbon\Carbon::parse($shift->end_time)->format('H:i') }}
@@ -74,19 +69,33 @@
                     @endif
                 </td>
 
-               {{-- 遅刻 --}}
-{{-- 遅刻 --}}
-<td>
-    @php $late = $attendance->late_minutes; @endphp
-    @if($late > 0)
-        ○ ({{ intdiv($late, 60) }}h{{ $late % 60 }}m)
-    @endif
-</td>
+                {{-- 遅刻 --}}
+                <td>
+                    @php 
+                        $late = $attendance->late_minutes; 
+                        $late_hours = intdiv($late, 60);
+                        $late_mins = $late % 60;
+                    @endphp
+                    @if($late > 0)
+                        ○ (
+                        @if($late_hours > 0) {{ $late_hours }}時間 @endif
+                        @if($late_mins > 0) {{ $late_mins }}分 @endif
+                        )
+                    @endif
+                </td>
 
                 {{-- 早退 --}}
                 <td>
-                    @if($attendance->early_leave_minutes > 0)
-                        ○ ({{ intdiv($attendance->early_leave_minutes, 60) }}h{{ $attendance->early_leave_minutes % 60 }}m)
+                    @php 
+                        $early = $attendance->early_leave_minutes; 
+                        $early_hours = intdiv($early, 60);
+                        $early_mins = $early % 60;
+                    @endphp
+                    @if($early > 0)
+                        ○ (
+                        @if($early_hours > 0) {{ $early_hours }}時間 @endif
+                        @if($early_mins > 0) {{ $early_mins }}分 @endif
+                        )
                     @endif
                 </td>
             </tr>
