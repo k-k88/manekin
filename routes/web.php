@@ -198,3 +198,7 @@ Route::middleware(['auth'])->group(function () {
             ->name('breakEnd');
     });
 });
+
+Route::get('/company/{company}/today-attendances',
+    [AttendanceController::class, 'todayAttendances']
+)->name('company.todayAttendances');

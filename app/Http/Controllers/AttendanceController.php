@@ -197,6 +197,7 @@ class AttendanceController extends Controller
         Attendance::create([
             'company_id'      => $company->id,
             'user_id'         => $user->id,
+            'store_id'        => $user->store_id,
             'date'            => $date->format('Y-m-d'),
             'clock_in'        => $clockInTime->format('H:i:s'),
             'clock_out'       => $clockOutTime->format('H:i:s'),
@@ -379,5 +380,19 @@ class AttendanceController extends Controller
 
     return [$late, $early];
 }
+public function todayAttendances(Company $company)
+{
+    $today = \Carbon\Carbon::today()->format('Y-m-d');
+
+    $attendances = \App\Models\Attendance::where('company_id', $company->id)
+        ->whereDate('date', $today)
+        ->with(['user', 'store'])
+        ->orderBy('clock_in', 'asc')
+        ->get();
+
+    return view('company.today_attendances', compact('company', 'attendances'));
+}
+
+
 
 }

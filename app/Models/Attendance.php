@@ -33,13 +33,14 @@ class Attendance extends Model
 
  protected $casts = [
     'date' => 'date',
-    'clock_in' => 'string',
-    'clock_out' => 'string',
-    'break_start' => 'string',
-    'break_end' => 'string',
+    'clock_in' => 'datetime',
+    'clock_out' => 'datetime',
+    'break_start' => 'datetime',
+    'break_end' => 'datetime',
     'late_flag' => 'boolean',
     'early_leave_flag' => 'boolean',
 ];
+
 
 
     // ----------------------------
@@ -85,15 +86,17 @@ class Attendance extends Model
     // ☕ 休憩分数
     // ----------------------------
     public function calculateBreakMinutes(): int
-    {
-        if ($this->break_start && $this->break_end) {
-            $bStart = $this->parseTimeWithOverflow($this->date, $this->break_start);
-            $bEnd   = $this->parseTimeWithOverflow($this->date, $this->break_end);
-            if ($bEnd->lessThanOrEqualTo($bStart)) $bEnd->addDay();
-            return $bStart->diffInMinutes($bEnd);
-        }
-        return 0;
+{
+    if ($this->break_start && $this->break_end) {
+        $bStart = $this->parseTimeWithOverflow($this->date, $this->break_start);
+        $bEnd   = $this->parseTimeWithOverflow($this->date, $this->break_end);
+        if (!$bStart || !$bEnd) return 0; // 追加
+        if ($bEnd->lessThanOrEqualTo($bStart)) $bEnd->addDay();
+        return $bStart->diffInMinutes($bEnd);
     }
+    return 0;
+}
+
 
  // ----------------------------
 // ⏱ 勤務総分数
@@ -379,8 +382,11 @@ public function syncToShift()
             'status' => 'approved'
         ]
     );
-
-
-
 }
+
+public function store()
+{
+    return $this->belongsTo(\App\Models\Store::class);
+}
+
 }

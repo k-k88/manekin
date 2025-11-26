@@ -10,9 +10,13 @@
     @endif
 
     <div class="row">
-        <!-- 本日の出勤数 -->
+
+        <!-- 本日の出勤数（クリック可能） -->
         <div class="col-md-4 mb-3">
-            <div class="card shadow-sm text-center">
+            <div class="card shadow-sm text-center"
+                data-bs-toggle="modal"
+                data-bs-target="#todayAttendancesModal"
+                style="cursor: pointer;">
                 <div class="card-body">
                     <h5 class="card-title">本日の出勤数</h5>
                     <p class="display-6">{{ $today_attendance_count }} 人</p>
@@ -49,22 +53,21 @@
     {{-- 🔧 締め日設定フォーム --}}
     <h4 class="mt-4">🔧 締め日設定</h4>
 
-  <form action="{{ route('company.update', $company->id) }}" method="POST" class="mb-4">
-    @csrf
-    @method('PUT')
+    <form action="{{ route('company.update', $company->id) }}" method="POST" class="mb-4">
+        @csrf
+        @method('PUT')
 
-    <div class="d-flex align-items-center gap-2 flex-wrap" style="max-width: 220px;">
-        <select name="closing_day" class="form-select w-auto">
-            @for ($i = 1; $i <= 31; $i++)
-                <option value="{{ $i }}" {{ $company->closing_day == $i ? 'selected' : '' }}>
-                    {{ $i }}日
-                </option>
-            @endfor
-        </select>
-        <button type="submit" class="btn btn-primary">更新</button>
-    </div>
-</form>
-
+        <div class="d-flex align-items-center gap-2 flex-wrap" style="max-width: 220px;">
+            <select name="closing_day" class="form-select w-auto">
+                @for ($i = 1; $i <= 31; $i++)
+                    <option value="{{ $i }}" {{ $company->closing_day == $i ? 'selected' : '' }}>
+                        {{ $i }}日
+                    </option>
+                @endfor
+            </select>
+            <button type="submit" class="btn btn-primary">更新</button>
+        </div>
+    </form>
 
     <h4 class="mt-4 mb-3">🕓 出退勤履歴（📅 日付指定 & 🔁 自動更新）</h4>
 
@@ -91,7 +94,7 @@
     </div>
 </div>
 
-<!-- シフト調整モーダル -->
+<!-- ーーーーーーー シフト調整モーダル ーーーーーーー -->
 <div class="modal fade" id="shiftModal" tabindex="-1" aria-labelledby="shiftModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content shadow-lg">
@@ -111,6 +114,22 @@
   </div>
 </div>
 
+<!-- ーーーーーーー 今日の出勤者モーダル ーーーーーーー -->
+<div class="modal fade" id="todayAttendancesModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">本日の出勤者一覧</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body" id="today-attendances-body">
+        読み込み中...
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const logContainer = document.getElementById('attendance-log');
@@ -125,7 +144,16 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     loadButton.addEventListener('click', fetchLogs);
-    setInterval(fetchLogs, 30000); // 30秒ごと自動更新
+    setInterval(fetchLogs, 30000); // 30秒ごとに更新
+
+    // ★ 今日の出勤者モーダル読み込み
+    const todayModal = document.getElementById('todayAttendancesModal');
+    todayModal.addEventListener('show.bs.modal', async () => {
+        const res = await fetch("{{ route('company.todayAttendances', $company->id) }}");
+        const html = await res.text();
+        document.getElementById('today-attendances-body').innerHTML = html;
+    });
 });
 </script>
+
 @endsection
