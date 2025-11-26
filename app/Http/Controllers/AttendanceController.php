@@ -384,14 +384,26 @@ public function todayAttendances(Company $company)
 {
     $today = \Carbon\Carbon::today()->format('Y-m-d');
 
+    // 今日の勤怠取得
     $attendances = \App\Models\Attendance::where('company_id', $company->id)
         ->whereDate('date', $today)
         ->with(['user', 'store'])
         ->orderBy('clock_in', 'asc')
         ->get();
 
-    return view('company.today_attendances', compact('company', 'attendances'));
+    // 今日のシフト（勤怠未作成分）取得
+    $shiftUsers = Shift::with('user', 'store')
+        ->where('shift_date', $today)
+        ->where('status', 'approved')
+        ->get()
+        ->filter(function($shift) use ($attendances) {
+            return !$attendances->contains('user_id', $shift->user_id);
+        });
+
+    return view('company.today_attendances', compact('company', 'attendances', 'shiftUsers'));
 }
+
+
 
 
 
