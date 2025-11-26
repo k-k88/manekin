@@ -37,7 +37,6 @@
         <tbody>
             @forelse ($employees as $employee)
                 @php
-                    // ✅ 最新の有効時給を取得（WageHistory 優先）
                     $latestWage = \App\Models\WageHistory::where('user_id', $employee->id)
                         ->where('effective_from', '<=', now())
                         ->orderByDesc('effective_from')
@@ -72,7 +71,6 @@
                         @endif
                     </td>
 
-                    {{-- ✅ 時給履歴付きフォーム --}}
                     <td>
                         <form action="{{ route('company.employees.updateWage', ['company' => $company->id, 'employee' => $employee->id]) }}" 
                               method="POST" class="d-flex align-items-center">
@@ -86,10 +84,22 @@
                         </form>
                     </td>
 
+                    {{-- ▶▶ 操作列（ここ修正済） --}}
                     <td class="d-flex gap-1">
-                        <a href="{{ route('company.employees.edit', ['company' => $company->id, 'employee' => $employee->id]) }}" 
-                           class="btn btn-sm btn-warning">編集</a>
 
+                        {{-- 📊 従業員ダッシュボード --}}
+                        <a href="{{ url('/company/' . $company->id . '/employees/' . $employee->id . '/dashboard') }}" 
+                           class="btn btn-sm btn-info text-white">
+                           📊 ダッシュボード
+                        </a>
+
+                        {{-- 編集 --}}
+                        <a href="{{ route('company.employees.edit', ['company' => $company->id, 'employee' => $employee->id]) }}" 
+                           class="btn btn-sm btn-warning">
+                            編集
+                        </a>
+
+                        {{-- 削除 --}}
                         <form action="{{ route('company.employees.delete', ['company' => $company->id, 'employee' => $employee->id]) }}"
                               method="POST" onsubmit="return confirm('本当に削除しますか？')">
                             @csrf
@@ -97,6 +107,7 @@
                             <button type="submit" class="btn btn-sm btn-danger">削除</button>
                         </form>
                     </td>
+
                 </tr>
             @empty
                 <tr>
