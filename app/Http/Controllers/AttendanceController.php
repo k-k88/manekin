@@ -194,22 +194,6 @@ class AttendanceController extends Controller
             $breakMinutes = $breakStartTime->diffInMinutes($breakEndTime);
         }
 
-<<<<<<< HEAD
-        // ⑥ 登録
-        Attendance::create([
-            'company_id'      => $company->id,
-            'user_id'         => $user->id,
-            'store_id'        => $user->store_id,
-            'date'            => $date->format('Y-m-d'),
-            'clock_in'        => $clockInTime->format('H:i:s'),
-            'clock_out'       => $clockOutTime->format('H:i:s'),
-            'break_start'     => $breakStartTime?->format('H:i:s'),
-            'break_end'       => $breakEndTime?->format('H:i:s'),
-            'break_minutes'   => $breakMinutes,
-            'late_flag'       => $lateFlag,
-            'early_leave_flag'=> $earlyLeaveFlag,
-        ]);
-=======
         /* ==============================
            ⑥ 保存 → updateOrCreate に変更！
         ============================== */
@@ -229,7 +213,6 @@ class AttendanceController extends Controller
                 'early_leave_flag'=> $earlyLeaveFlag,
             ]
         );
->>>>>>> 2721e68e8dec8729e12a4b7aff528b40f5405b56
 
         return redirect()->route('company.attendances', $company)
             ->with('success', '勤怠を登録しました（既存データは上書きされました）。');

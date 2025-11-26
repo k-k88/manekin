@@ -88,31 +88,13 @@
         <a href="{{ route('company.shift.requests', $company->id) }}" class="btn btn-info m-2">📨 シフト提出一覧</a>
         <a href="{{ route('company.attendances.late_early', $company->id) }}" class="btn btn-danger m-2">⏰ 遅刻・早退一覧</a>
 
-        <button type="button" class="btn btn-secondary m-2" data-bs-toggle="modal" data-bs-target="#shiftModal">
+        <!-- 直接シフト編集画面へリンク -->
+        <a href="{{ route('company.shift.calendar.edit', ['company' => $company->id]) }}" class="btn btn-secondary m-2">
             🗓️ シフト調整
-        </button>
-    </div>
-</div>
-
-<!-- ーーーーーーー シフト調整モーダル ーーーーーーー -->
-<div class="modal fade" id="shiftModal" tabindex="-1" aria-labelledby="shiftModalLabel" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content shadow-lg">
-      <div class="modal-header">
-        <h5 class="modal-title" id="shiftModalLabel">シフト調整メニュー</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-
-      <div class="modal-body text-center">
-        <p>以下の操作を選択してください。</p>
-
-        <a href="{{ route('company.shift.calendar.edit', ['company' => $company->id]) }}" class="btn btn-primary m-2">
-            ✏️ シフト編集（確定側）
         </a>
-      </div>
     </div>
-  </div>
 </div>
+
 
 <!-- ーーーーーーー 今日の出勤者モーダル ーーーーーーー -->
 <div class="modal fade" id="todayAttendancesModal" tabindex="-1" aria-hidden="true">
