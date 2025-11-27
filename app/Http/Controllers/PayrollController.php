@@ -122,17 +122,22 @@ class PayrollController extends Controller
     /**
      * 出勤時刻の文字列を Carbon に変換（時刻のみ or 日付付きに対応）
      */
-    private function parseClock(?string $timeStr, string $date): ?Carbon
-    {
-        if (!$timeStr) return null;
+   private function parseClock(?string $timeStr, string $date): ?Carbon
+{
+    if (!$timeStr) return null;
 
-        // 日付がすでに含まれている場合はそのまま Carbon に
-        if (preg_match('/^\d{4}-\d{2}-\d{2}/', $timeStr)) {
-            return Carbon::parse($timeStr);
-        }
-
-        return Carbon::parse("{$date} {$timeStr}");
+    // timeStr に日付が含まれている場合はそのまま使う
+    if (preg_match('/^\d{4}-\d{2}-\d{2}/', $timeStr)) {
+        return Carbon::parse($timeStr);
     }
+
+    // $date が DATETIME でも DATE に変換
+    $dateObj = Carbon::parse($date)->startOfDay();
+
+    // 時刻だけセット
+    return $dateObj->setTimeFromTimeString($timeStr);
+}
+
 
     /**
      * 給与一覧表示
