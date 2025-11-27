@@ -31,12 +31,15 @@ class Attendance extends Model
         'early_leave_flag',
     ];
 
- protected $casts = [
-    'date' => 'date',
-    'clock_in' => 'datetime',
-    'clock_out' => 'datetime',
-    'break_start' => 'datetime',
-    'break_end' => 'datetime',
+protected $casts = [
+    'date' => 'date:Y-m-d',   // date は正しく date で OK
+
+    // TIME型は絶対に datetime にキャストしてはいけない
+    'clock_in' => 'string',
+    'clock_out' => 'string',
+    'break_start' => 'string',
+    'break_end' => 'string',
+
     'late_flag' => 'boolean',
     'early_leave_flag' => 'boolean',
 ];
@@ -215,20 +218,21 @@ public function getLateMinutesAttribute(): int
 
     // シフト開始
     $shiftStart = Carbon::parse("{$shift->shift_date} {$shift->start_time}");
-    // 打刻
-    $clockIn = Carbon::parse("{$this->date->format('Y-m-d')} {$this->clock_in}");
 
-    // 正しい差分は shiftStart → clockIn
+    // 打刻時刻（$this->clock_in は既に Carbon の場合もある）
+    $clockIn = $this->clock_in instanceof Carbon ? $this->clock_in : Carbon::parse($this->clock_in);
+
+    // ★ 日付をシフト開始日に揃える
+    $clockIn = $clockIn->copy()->setDate(
+        $shiftStart->year,
+        $shiftStart->month,
+        $shiftStart->day
+    );
+
     return $clockIn->gt($shiftStart)
         ? $shiftStart->diffInMinutes($clockIn)
         : 0;
 }
-
-
-
-
-
-
 
 // ----------------------------
 // ⏰ 早退分（分）
@@ -240,16 +244,23 @@ public function getEarlyLeaveMinutesAttribute(): int
     $shift = $this->shiftOfDay()->first();
     if (!$shift || $shift->is_day_off) return 0;
 
-    $shiftEnd = Carbon::parse($shift->shift_date . ' ' . $shift->end_time);
-    $clockOut = Carbon::parse($this->date->format('Y-m-d') . ' ' . $this->clock_out);
+    // シフト終了
+    $shiftEnd = Carbon::parse("{$shift->shift_date} {$shift->end_time}");
 
-   return $clockOut->lt($shiftEnd)
-    ? $clockOut->diffInMinutes($shiftEnd)
-    : 0;
+    // 打刻時刻（$this->clock_out は既に Carbon の場合もある）
+    $clockOut = $this->clock_out instanceof Carbon ? $this->clock_out : Carbon::parse($this->clock_out);
 
+    // ★ 日付をシフト終了日に揃える
+    $clockOut = $clockOut->copy()->setDate(
+        $shiftEnd->year,
+        $shiftEnd->month,
+        $shiftEnd->day
+    );
 
+    return $clockOut->lt($shiftEnd)
+        ? $clockOut->diffInMinutes($shiftEnd)
+        : 0;
 }
-
 
 
 
