@@ -31,12 +31,15 @@ class Attendance extends Model
         'early_leave_flag',
     ];
 
- protected $casts = [
-    'date' => 'date',
-    'clock_in' => 'datetime',
-    'clock_out' => 'datetime',
-    'break_start' => 'datetime',
-    'break_end' => 'datetime',
+protected $casts = [
+    'date' => 'date:Y-m-d',   // date は正しく date で OK
+
+    // TIME型は絶対に datetime にキャストしてはいけない
+    'clock_in' => 'string',
+    'clock_out' => 'string',
+    'break_start' => 'string',
+    'break_end' => 'string',
+
     'late_flag' => 'boolean',
     'early_leave_flag' => 'boolean',
 ];

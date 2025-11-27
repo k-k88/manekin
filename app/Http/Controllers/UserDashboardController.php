@@ -15,196 +15,165 @@ class UserDashboardController extends Controller
     /**
      * 従業員ダッシュボード
      */
-    public function index(Company $company, User $employee)
-    {
-        if ($employee->company_id !== $company->id) abort(404);
+public function index(Request $request, Company $company, User $employee)
+{
+    if ($employee->company_id !== $company->id) abort(404);
 
-        $months = [];
-        $workHours = [];
-        $overTimes = [];
-        $paidLeaveCounts = [];
-        $salaryList = [];
+    // ▼ 選択月（デフォルト今月）
+    $selectedMonth = $request->input('month', Carbon::now()->format('Y-m'));
+    $selected = Carbon::parse($selectedMonth . '-01');
 
-        // ------------------------------------------------------------
-        // 直近12ヶ月〜未来6ヶ月（計18ヶ月）
-        // ------------------------------------------------------------
-        $start = Carbon::now()->subMonths(11);
-        $end   = Carbon::now()->addMonths(6);
+    // ▼ グラフ範囲（12ヶ月前〜6ヶ月後）
+    $start = Carbon::now()->subMonths(11)->startOfMonth();
+    $end   = Carbon::now()->addMonths(6)->endOfMonth();
 
-        $allAttMonths = Attendance::where('user_id', $employee->id)
-            ->whereBetween('date', [$start->format('Y-m-d'), $end->format('Y-m-d')])
-            ->orderBy('date')
-            ->get()
-            ->groupBy(fn($att) => Carbon::parse($att->date)->format('Y-m'));
+    $months = [];
+    $workHours = [];
+    $overTimes = [];
+    $paidLeaveCounts = [];
+    $salaryList = [];
 
-        // 出勤なし
-        if ($allAttMonths->isEmpty()) {
-            $summary = [
-                'work_hours' => 0,
-                'overtime' => 0,
-                'paid_leave' => 0,
-                'work_count' => 0,
-                'avg_work_hours' => 0,
-            ];
+    // ---------------------------------------------
+    // ▼ 勤怠データ（広範囲で一括取得）
+    // ---------------------------------------------
+    $attData = Attendance::where('user_id', $employee->id)
+        ->whereBetween('date', [$start, $end])
+        ->orderBy('date')
+        ->get()
+        ->groupBy(fn($a) => Carbon::parse($a->date)->format('Y-m'));
 
-            return view('company.user.dashboard', compact(
-                'company', 'employee',
-                'months', 'workHours', 'overTimes', 'paidLeaveCounts', 'salaryList',
-                'summary'
-            ));
+    // ▼ 有休データ（Shiftから）
+    $shiftData = Shift::where('user_id', $employee->id)
+        ->whereBetween('shift_date', [$start, $end])
+        ->get()
+        ->groupBy(fn($s) => Carbon::parse($s->shift_date)->format('Y-m'));
+
+    // =============================================
+    // ▼ グラフ用計算（Attendance + 有休だけShift）
+    // =============================================
+    $period = new \DatePeriod(
+        $start,
+        new \DateInterval('P1M'),
+        $end->copy()->addMonth()
+    );
+
+    foreach ($period as $month) {
+
+        $ym = $month->format('Y-m');
+        $months[] = $month->format('Y/m');
+
+        $att = $attData->get($ym) ?? collect();
+        $shifts = $shiftData->get($ym) ?? collect();
+
+        $totalWork = 0;
+        $totalOver = 0;
+        $paidLeave = 0;
+
+        // 有休は Shift からのみ
+        foreach ($shifts as $s) {
+            if ($s->is_paid_leave) $paidLeave++;
         }
 
-        // ------------------------------------------------------------
-        // 月ごとの集計（有給完全対応版）
-        // ------------------------------------------------------------
-        foreach ($allAttMonths as $ym => $monthAtt) {
+        // 勤怠の実働時間
+        foreach ($att as $a) {
 
-            $target = Carbon::parse($ym . "-01");
-            $months[] = $target->format('Y/m');
+            if (!$a->clock_in || !$a->clock_out) continue;
 
-            $shifts = Shift::where('user_id', $employee->id)
-                ->whereYear('shift_date', $target->year)
-                ->whereMonth('shift_date', $target->month)
-                ->get();
+            $diff = $this->calcWorkMinutes(
+                $a->date,
+                $a->clock_in,
+                $a->clock_out,
+                $a->break_minutes
+            );
 
-            $totalMinutes = 0;
-            $overtimeMinutes = 0;
-            $paidLeaveDays = 0;
+            if ($diff > 0) {
+                $totalWork += $diff;
 
-            // シフトベースで完全に集計
-            foreach ($shifts as $shift) {
-
-                // 勤怠（attendance）があるか？
-                $att = $monthAtt->firstWhere('date', $shift->shift_date);
-
-                // ① 有給なら即カウントして終了
-                if ($shift->is_paid_leave) {
-                    $paidLeaveDays++;
-                    continue;
-                }
-
-                // ② 勤怠がある → 勤怠優先
-                if ($att && $att->clock_in && $att->clock_out) {
-                    $diff = $this->calcWorkMinutes(
-                        $att->date,
-                        $att->clock_in,
-                        $att->clock_out,
-                        $att->break_minutes
-                    );
-
-                    if ($diff > 0) {
-                        $totalMinutes += $diff;
-                        if ($diff > 480) $overtimeMinutes += ($diff - 480);
-                    }
-                    continue;
-                }
-
-                // ③ 勤怠なし → シフトから時間計算
-                if (!$shift->is_day_off && $shift->start_time && $shift->end_time) {
-                    $diff = $this->calcWorkMinutes(
-                        $shift->shift_date,
-                        $shift->start_time,
-                        $shift->end_time,
-                        0
-                    );
-
-                    if ($diff > 0) {
-                        $totalMinutes += $diff;
-                        if ($diff > 480) $overtimeMinutes += ($diff - 480);
-                    }
-                }
-            }
-
-            $workHours[] = round($totalMinutes / 60, 1);
-            $overTimes[] = round($overtimeMinutes / 60, 1);
-            $paidLeaveCounts[] = $paidLeaveDays;
-
-            // 給与
-            $payroll = Payroll::where('user_id', $employee->id)
-                ->where('month', $target->format('Y-m-01'))
-                ->first();
-
-            $salaryList[] = $payroll?->total_pay ?? 0;
-        }
-
-        // ------------------------------------------------------------
-        // サマリー：最新の出勤がある月
-        // ------------------------------------------------------------
-        $latestMonthKey = $allAttMonths->keys()->sort()->last();
-        $latestMonth = Carbon::parse($latestMonthKey . '-01');
-
-        $monthAtt = $allAttMonths->get($latestMonthKey) ?? collect();
-
-        $sumWork = 0;
-        $sumOver = 0;
-        $paidLeaveCurrent = 0;
-
-        $monthShifts = Shift::where('user_id', $employee->id)
-            ->whereYear('shift_date', $latestMonth->year)
-            ->whereMonth('shift_date', $latestMonth->month)
-            ->get();
-
-        foreach ($monthShifts as $shift) {
-
-            $att = $monthAtt->firstWhere('date', $shift->shift_date);
-
-            if ($shift->is_paid_leave) {
-                $paidLeaveCurrent++;
-                continue;
-            }
-
-            if ($att && $att->clock_in && $att->clock_out) {
-
-                $diff = $this->calcWorkMinutes(
-                    $att->date,
-                    $att->clock_in,
-                    $att->clock_out,
-                    $att->break_minutes
-                );
-
-                if ($diff > 0) {
-                    $sumWork += $diff;
-                    if ($diff > 480) $sumOver += ($diff - 480);
-                }
-                continue;
-            }
-
-            if (!$shift->is_day_off && $shift->start_time && $shift->end_time) {
-                $diff = $this->calcWorkMinutes(
-                    $shift->shift_date,
-                    $shift->start_time,
-                    $shift->end_time
-                );
-
-                if ($diff > 0) {
-                    $sumWork += $diff;
-                    if ($diff > 480) $sumOver += ($diff - 480);
+                if ($diff > 480) {
+                    $totalOver += $diff - 480;
                 }
             }
         }
 
-        $workCount = $monthAtt->filter(fn($a) => $a->clock_in && $a->clock_out)->count();
-        $avgHours = $workCount ? round(($sumWork / 60) / $workCount, 1) : 0;
+        $workHours[]       = round($totalWork / 60, 1);
+        $overTimes[]       = round($totalOver / 60, 1);
+        $paidLeaveCounts[] = $paidLeave;
 
-        $summary = [
-            'work_hours' => round($sumWork / 60, 1),
-            'overtime'   => round($sumOver / 60, 1),
-            'paid_leave' => $paidLeaveCurrent,
-            'work_count' => $workCount,
-            'avg_work_hours' => $avgHours,
-        ];
+        $payroll = Payroll::where('user_id', $employee->id)
+            ->where('month', $month->format('Y-m-01'))
+            ->first();
 
-        return view('company.user.dashboard', compact(
-            'company',
-            'employee',
-            'months',
-            'workHours',
-            'overTimes',
-            'paidLeaveCounts',
-            'salaryList',
-            'summary'
-        ));
+        $salaryList[] = $payroll?->total_pay ?? 0;
     }
+
+    // =============================================
+    // ▼ サマリー（Attendance + Shift only for 有休）
+    // =============================================
+    $monthAtt = Attendance::where('user_id', $employee->id)
+        ->whereYear('date', $selected->year)
+        ->whereMonth('date', $selected->month)
+        ->get();
+
+    $monthShifts = Shift::where('user_id', $employee->id)
+        ->whereYear('shift_date', $selected->year)
+        ->whereMonth('shift_date', $selected->month)
+        ->get();
+
+    $sumWork = 0;
+    $sumOver = 0;
+    $paidLeave = 0;
+    $workCount = 0;
+
+    // 有休は Shift
+    foreach ($monthShifts as $s) {
+        if ($s->is_paid_leave) $paidLeave++;
+    }
+
+    // 実働時間は Attendance
+    foreach ($monthAtt as $a) {
+
+        if (!$a->clock_in || !$a->clock_out) continue;
+
+        $diff = $this->calcWorkMinutes(
+            $a->date,
+            $a->clock_in,
+            $a->clock_out,
+            $a->break_minutes
+        );
+
+        if ($diff > 0) {
+            $sumWork += $diff;
+            $workCount++;
+
+            if ($diff > 480) {
+                $sumOver += ($diff - 480);
+            }
+        }
+    }
+
+    $summary = [
+        'work_hours'     => round($sumWork / 60, 1),
+        'overtime'       => round($sumOver / 60, 1),
+        'paid_leave'     => $paidLeave,
+        'work_count'     => $workCount,
+        'avg_work_hours' => $workCount ? round(($sumWork / 60) / $workCount, 1) : 0,
+    ];
+
+    return view('company.user.dashboard', compact(
+        'company',
+        'employee',
+        'months',
+        'workHours',
+        'overTimes',
+        'paidLeaveCounts',
+        'salaryList',
+        'summary',
+        'selectedMonth'
+    ));
+}
+
+
+
 
 
     /**
