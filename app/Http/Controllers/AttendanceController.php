@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\Company;
+use App\Models\ShiftRequest;
 use App\Models\User;
 use App\Models\Attendance;
 use App\Models\Shift;
@@ -194,22 +195,6 @@ class AttendanceController extends Controller
             $breakMinutes = $breakStartTime->diffInMinutes($breakEndTime);
         }
 
-<<<<<<< HEAD
-        // ⑥ 登録
-        Attendance::create([
-            'company_id'      => $company->id,
-            'user_id'         => $user->id,
-            'store_id'        => $user->store_id,
-            'date'            => $date->format('Y-m-d'),
-            'clock_in'        => $clockInTime->format('H:i:s'),
-            'clock_out'       => $clockOutTime->format('H:i:s'),
-            'break_start'     => $breakStartTime?->format('H:i:s'),
-            'break_end'       => $breakEndTime?->format('H:i:s'),
-            'break_minutes'   => $breakMinutes,
-            'late_flag'       => $lateFlag,
-            'early_leave_flag'=> $earlyLeaveFlag,
-        ]);
-=======
         /* ==============================
            ⑥ 保存 → updateOrCreate に変更！
         ============================== */
@@ -229,7 +214,6 @@ class AttendanceController extends Controller
                 'early_leave_flag'=> $earlyLeaveFlag,
             ]
         );
->>>>>>> 2721e68e8dec8729e12a4b7aff528b40f5405b56
 
         return redirect()->route('company.attendances', $company)
             ->with('success', '勤怠を登録しました（既存データは上書きされました）。');
@@ -408,24 +392,47 @@ public function todayAttendances(Company $company)
 {
     $today = \Carbon\Carbon::today()->format('Y-m-d');
 
-    // 今日の勤怠取得
-    $attendances = \App\Models\Attendance::where('company_id', $company->id)
+    // ①今日の出勤データ
+    $attendances = Attendance::where('company_id', $company->id)
         ->whereDate('date', $today)
         ->with(['user', 'store'])
-        ->orderBy('clock_in', 'asc')
-        ->get();
-
-    // 今日のシフト（勤怠未作成分）取得
-    $shiftUsers = Shift::with('user', 'store')
-        ->where('shift_date', $today)
-        ->where('status', 'approved')
         ->get()
-        ->filter(function($shift) use ($attendances) {
-            return !$attendances->contains('user_id', $shift->user_id);
-        });
+        ->keyBy('user_id');
 
-    return view('company.today_attendances', compact('company', 'attendances', 'shiftUsers'));
+    // ②今日の確定シフト（通常シフト・希望休・有休 含む）
+    $shifts = Shift::whereIn('store_id', function($q) use ($company) {
+            $q->select('id')
+              ->from('stores')
+              ->where('company_id', $company->id);
+        })
+        ->whereDate('shift_date', $today)
+        ->with(['user', 'store'])
+        ->get()
+        ->keyBy('user_id');
+
+    // ③全社員一覧
+    $users = User::where('company_id', $company->id)->get();
+
+    $list = [];
+
+    foreach ($users as $user) {
+
+        $attendance = $attendances[$user->id] ?? null;
+        $shift      = $shifts[$user->id] ?? null;
+
+        $list[] = [
+            'user'       => $user,
+            'attendance' => $attendance,
+            'shift'      => $shift,
+        ];
+    }
+
+    return view('company.today_attendances', [
+        'company' => $company,
+        'list'    => $list,
+    ]);
 }
+
 
 
 

@@ -11,7 +11,7 @@
 
     <div class="row">
 
-        <!-- 本日の出勤数（クリック可能） -->
+        <!-- 本日の出勤数（クリック可能でモーダル表示） -->
         <div class="col-md-4 mb-3">
             <div class="card shadow-sm text-center"
                 data-bs-toggle="modal"
@@ -24,14 +24,16 @@
             </div>
         </div>
 
-        <!-- 登録社員数 -->
+        <!-- 登録社員数（クリックで社員一覧へ遷移） -->
         <div class="col-md-4 mb-3">
-            <div class="card shadow-sm text-center">
-                <div class="card-body">
-                    <h5 class="card-title">登録社員数</h5>
-                    <p class="display-6">{{ $employee_count }} 人</p>
+            <a href="{{ route('company.employees', $company->id) }}" class="text-decoration-none">
+                <div class="card shadow-sm text-center" style="cursor: pointer;">
+                    <div class="card-body">
+                        <h5 class="card-title">登録社員数</h5>
+                        <p class="display-6">{{ $employee_count }} 人</p>
+                    </div>
                 </div>
-            </div>
+            </a>
         </div>
 
         <!-- 登録店舗数 -->

@@ -5,10 +5,13 @@
 <div class="container mt-4">
     <h2 class="mb-4">🕓 本日の出勤者一覧</h2>
 
-    @if($attendances->isEmpty() && $shiftUsers->isEmpty())
-        <div class="alert alert-info">
-            本日出勤している社員はいません。
-        </div>
+    @php
+        // 出勤者(勤怠のある人)をフィルタ
+        $workingList = collect($list)->filter(fn($row) => $row['attendance']);
+    @endphp
+
+    @if($workingList->isEmpty())
+        <div class="alert alert-info">本日出勤している社員はいません。</div>
     @else
         <div class="card shadow-sm">
             <div class="card-body p-0">
@@ -24,18 +27,43 @@
                             <th>店舗</th>
                         </tr>
                     </thead>
+
                     <tbody>
-                        {{-- 勤怠データ --}}
-                        @foreach ($attendances as $attendance)
+                        @foreach ($workingList as $row)
+                            @php
+                                $user  = $row['user'];
+                                $att   = $row['attendance'];
+                                $shift = $row['shift'];
+                            @endphp
+
                             <tr>
-                                <td>{{ $attendance->user->name }}</td>
-                                <td>{{ $attendance->clock_in ? \Carbon\Carbon::parse($attendance->clock_in)->format('H:i') : '—' }}</td>
-                                <td>{{ $attendance->clock_out ? \Carbon\Carbon::parse($attendance->clock_out)->format('H:i') : '—' }}</td>
-                                <td>{{ $attendance->break_start ? \Carbon\Carbon::parse($attendance->break_start)->format('H:i') : '—' }}</td>
-                                <td>{{ $attendance->break_end ? \Carbon\Carbon::parse($attendance->break_end)->format('H:i') : '—' }}</td>
+                                {{-- 社員名 --}}
+                                <td>{{ $user->name }}</td>
+
+                                {{-- 出勤時刻 --}}
                                 <td>
-                                    @if(is_null($attendance->clock_out))
-                                        @if($attendance->break_start && is_null($attendance->break_end))
+                                    {{ $att->clock_in ? \Carbon\Carbon::parse($att->clock_in)->format('H:i') : '—' }}
+                                </td>
+
+                                {{-- 退勤時刻 --}}
+                                <td>
+                                    {{ $att->clock_out ? \Carbon\Carbon::parse($att->clock_out)->format('H:i') : '—' }}
+                                </td>
+
+                                {{-- 休憩開始 --}}
+                                <td>
+                                    {{ $att->break_start ? \Carbon\Carbon::parse($att->break_start)->format('H:i') : '—' }}
+                                </td>
+
+                                {{-- 休憩終了 --}}
+                                <td>
+                                    {{ $att->break_end ? \Carbon\Carbon::parse($att->break_end)->format('H:i') : '—' }}
+                                </td>
+
+                                {{-- 状態 --}}
+                                <td>
+                                    @if(!$att->clock_out)
+                                        @if($att->break_start && !$att->break_end)
                                             <span class="badge bg-warning text-dark">休憩中</span>
                                         @else
                                             <span class="badge bg-success">出勤中</span>
@@ -44,23 +72,22 @@
                                         <span class="badge bg-secondary">退勤済み</span>
                                     @endif
                                 </td>
-                                <td>{{ optional($attendance->store)->name ?? '—' }}</td>
-                            </tr>
-                        @endforeach
 
-                        {{-- 勤怠未作成のシフト予定 --}}
-                        @foreach ($shiftUsers as $shift)
-                            <tr class="table-info">
-                                <td>{{ $shift->user->name }}</td>
-                                <td>{{ \Carbon\Carbon::parse($shift->start_time)->format('H:i') }}</td>
-                                <td>{{ \Carbon\Carbon::parse($shift->end_time)->format('H:i') }}</td>
-                                <td>—</td>
-                                <td>—</td>
-                                <td><span class="badge bg-primary">出勤予定</span></td>
-                                <td>{{ optional($shift->store)->name ?? '—' }}</td>
+                                {{-- 店舗 --}}
+                                <td>
+                                    @if($att->store)
+                                        {{ $att->store->name }}
+                                    @elseif($shift && $shift->store)
+                                        {{ $shift->store->name }}
+                                    @else
+                                        —
+                                    @endif
+                                </td>
+
                             </tr>
                         @endforeach
                     </tbody>
+
                 </table>
             </div>
         </div>
