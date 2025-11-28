@@ -48,17 +48,20 @@ public function edit(Company $company)
     return view('admin.companies.edit', compact('company'));
 }
 
-public function update(Request $request, Company $company)
+public function update(Request $request, User $user)
 {
     $validated = $request->validate([
-        'name' => 'required|string|max:255',
-        'code' => 'required|string|max:255|unique:companies,code,' . $company->id,
+        'name'  => 'required|string|max:255',
+        'email' => 'required|email|unique:users,email,' . $user->id,
+        'role'  => 'required|in:company_admin,employee',
     ]);
 
-    $company->update($validated);
+    $user->update($validated);
 
-    return redirect()->route('admin.companies.index')->with('success', '会社情報を更新しました。');
+    return redirect()->route('admin.users.index')
+        ->with('success', 'ユーザー情報を更新しました。');
 }
+
 
 public function destroy(Company $company)
 {
