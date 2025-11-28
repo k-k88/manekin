@@ -31,20 +31,51 @@ class Attendance extends Model
         'early_leave_flag',
     ];
 
-protected $casts = [
-    'date' => 'date:Y-m-d',   // date は正しく date で OK
+    protected $casts = [
+        'date' => 'date:Y-m-d',
 
-    // TIME型は絶対に datetime にキャストしてはいけない
-    'clock_in' => 'string',
-    'clock_out' => 'string',
-    'break_start' => 'string',
-    'break_end' => 'string',
+        'clock_in' => 'string',
+'clock_out' => 'string',
 
-    'late_flag' => 'boolean',
-    'early_leave_flag' => 'boolean',
-];
+        'break_start'  => 'string',
+        'break_end'    => 'string',
 
+        'late_flag' => 'boolean',
+        'early_leave_flag' => 'boolean',
+    ];
 
+    // 🔧 ここだけ追加（休憩開始/終了のTIME補正）
+    // 🔧 休憩開始
+public function setBreakStartAttribute($value)
+{
+    if ($value) {
+        // 13:00 → 13:00:00
+        if (preg_match('/^\d{2}:\d{2}$/', $value)) {
+            $value .= ':00';
+        }
+        // 13 → 13:00:00
+        if (preg_match('/^\d{1,2}$/', $value)) {
+            $value = str_pad($value, 2, '0', STR_PAD_LEFT) . ':00:00';
+        }
+    }
+    $this->attributes['break_start'] = $value;
+}
+
+// 🔧 休憩終了
+public function setBreakEndAttribute($value)
+{
+    if ($value) {
+        if (preg_match('/^\d{2}:\d{2}$/', $value)) {
+            $value .= ':00';
+        }
+        if (preg_match('/^\d{1,2}$/', $value)) {
+            $value = str_pad($value, 2, '0', STR_PAD_LEFT) . ':00:00';
+        }
+    }
+    $this->attributes['break_end'] = $value;
+}
+
+    // 追加ここまで ----------------------
 
     // ----------------------------
     // 🔹 リレーション
@@ -89,48 +120,42 @@ protected $casts = [
     // ☕ 休憩分数
     // ----------------------------
     public function calculateBreakMinutes(): int
-{
-    if ($this->break_start && $this->break_end) {
-        $bStart = $this->parseTimeWithOverflow($this->date, $this->break_start);
-        $bEnd   = $this->parseTimeWithOverflow($this->date, $this->break_end);
-        if (!$bStart || !$bEnd) return 0; // 追加
-        if ($bEnd->lessThanOrEqualTo($bStart)) $bEnd->addDay();
-        return $bStart->diffInMinutes($bEnd);
-    }
-    return 0;
-}
-
-
- // ----------------------------
-// ⏱ 勤務総分数
-// ----------------------------
-public function getTotalWorkMinutes(): int
-{
-    if (!$this->clock_in || !$this->clock_out) return 0;
-
-    $in  = $this->parseTimeWithOverflow($this->date, $this->clock_in);
-    $out = $this->parseTimeWithOverflow($this->date, $this->clock_out);
-
-    // 出退勤が同じ場合は 0分
-    if ($in->eq($out)) {
+    {
+        if ($this->break_start && $this->break_end) {
+            $bStart = $this->parseTimeWithOverflow($this->date, $this->break_start);
+            $bEnd   = $this->parseTimeWithOverflow($this->date, $this->break_end);
+            if (!$bStart || !$bEnd) return 0;
+            if ($bEnd->lessThanOrEqualTo($bStart)) $bEnd->addDay();
+            return $bStart->diffInMinutes($bEnd);
+        }
         return 0;
     }
 
-    // 日またぎ補正
-    if ($out->lessThan($in)) {
-        $out->addDay();
+    // ----------------------------
+    // ⏱ 勤務総分数
+    // ----------------------------
+    public function getTotalWorkMinutes(): int
+    {
+        if (!$this->clock_in || !$this->clock_out) return 0;
+
+        $in  = $this->parseTimeWithOverflow($this->date, $this->clock_in);
+        $out = $this->parseTimeWithOverflow($this->date, $this->clock_out);
+
+        if ($in->eq($out)) {
+            return 0;
+        }
+
+        if ($out->lessThan($in)) {
+            $out->addDay();
+        }
+
+        $diffMinutes = $in->diffInMinutes($out);
+        if ($diffMinutes <= 0) return 0;
+
+        $breakMinutes = $this->break_minutes ?? $this->calculateBreakMinutes();
+
+        return max(0, $diffMinutes - $breakMinutes);
     }
-
-    // 総分数計算
-    $diffMinutes = $in->diffInMinutes($out);
-    if ($diffMinutes <= 0) return 0;
-
-    $breakMinutes = $this->break_minutes ?? $this->calculateBreakMinutes();
-
-    return max(0, $diffMinutes - $breakMinutes);
-}
-
-
 
     // ----------------------------
     // 🌙 深夜勤務分
@@ -148,122 +173,101 @@ public function getTotalWorkMinutes(): int
             : 0;
     }
 
+    // 💴 給与計算
+    public function getPayAttribute(): int
+    {
+        $shift = $this->shiftOfDay()->first();
+        $isPaidLeave = $shift?->is_paid_leave ?? false;
 
-// 💴 給与計算（有給は8時間分）
-// ----------------------------
-public function getPayAttribute(): int
-{
-    // シフト取得
-    $shift = $this->shiftOfDay()->first();
-    $isPaidLeave = $shift?->is_paid_leave ?? false;
+        if ($isPaidLeave) {
+            $wage = $this->effective_wage ?? $this->hourly_wage ?? 0;
+            return (int) round($wage * 8);
+        }
 
-    // 有給 → 8時間固定
-    if ($isPaidLeave) {
-        $wage = $this->effective_wage ?? $this->hourly_wage ?? 0;
-        return (int) round($wage * 8);
+        $totalMinutes = $this->getTotalWorkMinutes();
+        if ($totalMinutes <= 0) {
+            return 0;
+        }
+
+        $in  = $this->parseTimeWithOverflow($this->date, $this->clock_in);
+        $out = $this->parseTimeWithOverflow($this->date, $this->clock_out);
+        if ($out->lessThanOrEqualTo($in)) {
+            $out->addDay();
+        }
+
+        $nightMinutes = $this->calculateNightMinutes($in, $out);
+        $normalMinutes = max(0, $totalMinutes - $nightMinutes);
+
+        $hourlyWage = $this->effective_wage ?? $this->hourly_wage ?? 0;
+        $normalPay  = ($normalMinutes / 60) * $hourlyWage;
+        $nightPay   = ($nightMinutes / 60) * $hourlyWage * 1.25;
+
+        return (int) round($normalPay + $nightPay);
     }
 
-    // 出勤無しまたは勤務総分数0 → 0円
-    $totalMinutes = $this->getTotalWorkMinutes();
-    if ($totalMinutes <= 0) {
-        return 0;
+    public function getWorkedHoursAttribute(): float
+    {
+        $shift = $this->shiftOfDay()->first();
+        $isPaidLeave = $shift?->is_paid_leave ?? false;
+
+        if ($isPaidLeave) {
+            return 8.0;
+        }
+
+        $minutes = $this->getTotalWorkMinutes();
+
+        return round($minutes / 60, 2);
     }
 
-    $in  = $this->parseTimeWithOverflow($this->date, $this->clock_in);
-    $out = $this->parseTimeWithOverflow($this->date, $this->clock_out);
-    if ($out->lessThanOrEqualTo($in)) {
-        $out->addDay();
+    // ----------------------------
+    // ⏰ 遅刻分
+    // ----------------------------
+    public function getLateMinutesAttribute(): int
+    {
+        if (!$this->clock_in) return 0;
+
+        $shift = $this->shiftOfDay()->first();
+        if (!$shift || $shift->is_day_off) return 0;
+
+        $shiftStart = Carbon::parse("{$shift->shift_date} {$shift->start_time}");
+
+        $clockIn = $this->clock_in instanceof Carbon ? $this->clock_in : Carbon::parse($this->clock_in);
+
+        $clockIn = $clockIn->copy()->setDate(
+            $shiftStart->year,
+            $shiftStart->month,
+            $shiftStart->day
+        );
+
+        return $clockIn->gt($shiftStart)
+            ? $shiftStart->diffInMinutes($clockIn)
+            : 0;
     }
 
-    // 夜勤時間計算
-    $nightMinutes = $this->calculateNightMinutes($in, $out);
-    $normalMinutes = max(0, $totalMinutes - $nightMinutes);
+    // ----------------------------
+    // ⏰ 早退分
+    // ----------------------------
+    public function getEarlyLeaveMinutesAttribute(): int
+    {
+        if (!$this->clock_out) return 0;
 
-    $hourlyWage = $this->effective_wage ?? $this->hourly_wage ?? 0;
-    $normalPay  = ($normalMinutes / 60) * $hourlyWage;
-    $nightPay   = ($nightMinutes / 60) * $hourlyWage * 1.25;
+        $shift = $this->shiftOfDay()->first();
+        if (!$shift || $shift->is_day_off) return 0;
 
-    return (int) round($normalPay + $nightPay);
-}
+        $shiftEnd = Carbon::parse("{$shift->shift_date} {$shift->end_time}");
 
+        $clockOut = $this->clock_out instanceof Carbon ? $this->clock_out : Carbon::parse($this->clock_out);
 
+        $clockOut = $clockOut->copy()->setDate(
+            $shiftEnd->year,
+            $shiftEnd->month,
+            $shiftEnd->day
+        );
 
-public function getWorkedHoursAttribute(): float
-{
-    $shift = $this->shiftOfDay()->first();
-    $isPaidLeave = $shift?->is_paid_leave ?? false;
-
-    // 有給 → 8時間
-    if ($isPaidLeave) {
-        return 8.0;
+        return $clockOut->lt($shiftEnd)
+            ? $clockOut->diffInMinutes($shiftEnd)
+            : 0;
     }
-
-    // getTotalWorkMinutes() を利用
-    $minutes = $this->getTotalWorkMinutes();
-
-    return round($minutes / 60, 2);
-}
-
-
-
-// ----------------------------
-// ⏰ 遅刻分（分）
-// ----------------------------
-public function getLateMinutesAttribute(): int
-{
-    if (!$this->clock_in) return 0;
-
-    $shift = $this->shiftOfDay()->first();
-    if (!$shift || $shift->is_day_off) return 0;
-
-    // シフト開始
-    $shiftStart = Carbon::parse("{$shift->shift_date} {$shift->start_time}");
-
-    // 打刻時刻（$this->clock_in は既に Carbon の場合もある）
-    $clockIn = $this->clock_in instanceof Carbon ? $this->clock_in : Carbon::parse($this->clock_in);
-
-    // ★ 日付をシフト開始日に揃える
-    $clockIn = $clockIn->copy()->setDate(
-        $shiftStart->year,
-        $shiftStart->month,
-        $shiftStart->day
-    );
-
-    return $clockIn->gt($shiftStart)
-        ? $shiftStart->diffInMinutes($clockIn)
-        : 0;
-}
-
-// ----------------------------
-// ⏰ 早退分（分）
-// ----------------------------
-public function getEarlyLeaveMinutesAttribute(): int
-{
-    if (!$this->clock_out) return 0;
-
-    $shift = $this->shiftOfDay()->first();
-    if (!$shift || $shift->is_day_off) return 0;
-
-    // シフト終了
-    $shiftEnd = Carbon::parse("{$shift->shift_date} {$shift->end_time}");
-
-    // 打刻時刻（$this->clock_out は既に Carbon の場合もある）
-    $clockOut = $this->clock_out instanceof Carbon ? $this->clock_out : Carbon::parse($this->clock_out);
-
-    // ★ 日付をシフト終了日に揃える
-    $clockOut = $clockOut->copy()->setDate(
-        $shiftEnd->year,
-        $shiftEnd->month,
-        $shiftEnd->day
-    );
-
-    return $clockOut->lt($shiftEnd)
-        ? $clockOut->diffInMinutes($shiftEnd)
-        : 0;
-}
-
-
-
 
     // ----------------------------
     // 🔄 モデルイベント
@@ -345,59 +349,55 @@ public function getEarlyLeaveMinutesAttribute(): int
             ]
         );
     }
-public function shiftOfDay()
-{
-    $date = $this->date instanceof \Carbon\Carbon
-        ? $this->date->format('Y-m-d')
-        : $this->date;
 
-    return $this->hasOne(Shift::class, 'user_id', 'user_id')
-        ->whereDate('shift_date', $date)
-        ->where('status', 'approved');
-}
-// Attendance.php
-public function getIsPaidLeaveForViewAttribute()
-{
-    return $this->shift?->is_paid_leave ? true : false;
-}
+    public function shiftOfDay()
+    {
+        $date = $this->date instanceof \Carbon\Carbon
+            ? $this->date->format('Y-m-d')
+            : $this->date;
 
+        return $this->hasOne(Shift::class, 'user_id', 'user_id')
+            ->whereDate('shift_date', $date)
+            ->where('status', 'approved');
+    }
 
-// Attendance と Shift はリレーションが必要
-public function shift()
-{
-    $date = $this->date instanceof Carbon
-        ? $this->date->format('Y-m-d')
-        : $this->date;
+    public function getIsPaidLeaveForViewAttribute()
+    {
+        return $this->shift?->is_paid_leave ? true : false;
+    }
 
-    return $this->hasOne(Shift::class, 'user_id', 'user_id')
-        ->whereDate('shift_date', $date)
-        ->where('status', 'approved');
-}
+    public function shift()
+    {
+        $date = $this->date instanceof Carbon
+            ? $this->date->format('Y-m-d')
+            : $this->date;
 
+        return $this->hasOne(Shift::class, 'user_id', 'user_id')
+            ->whereDate('shift_date', $date)
+            ->where('status', 'approved');
+    }
 
+    public function syncToShift()
+    {
+        Shift::updateOrCreate(
+            [
+                'user_id' => $this->user_id,
+                'shift_date' => $this->date,
+            ],
+            [
+                'store_id' => $this->store_id,
+                'start_time' => $this->clock_in ? "{$this->date} {$this->clock_in}:00" : null,
+                'end_time' => $this->clock_out ? "{$this->date} {$this->clock_out}:00" : null,
+                'is_day_off' => 0,
+                'is_paid_leave' => 0,
+                'status' => 'approved'
+            ]
+        );
+    }
 
-
-public function syncToShift()
-{
-    Shift::updateOrCreate(
-        [
-            'user_id' => $this->user_id,
-            'shift_date' => $this->date,
-        ],
-        [
-            'store_id' => $this->store_id,
-            'start_time' => $this->clock_in ? "{$this->date} {$this->clock_in}:00" : null,
-            'end_time' => $this->clock_out ? "{$this->date} {$this->clock_out}:00" : null,
-            'is_day_off' => 0,
-            'is_paid_leave' => 0,
-            'status' => 'approved'
-        ]
-    );
-}
-
-public function store()
-{
-    return $this->belongsTo(\App\Models\Store::class);
-}
+    public function store()
+    {
+        return $this->belongsTo(\App\Models\Store::class);
+    }
 
 }

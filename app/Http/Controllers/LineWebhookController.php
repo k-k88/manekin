@@ -37,6 +37,10 @@ class LineWebhookController extends Controller
 
             // 全角/半角スペース除去
             $text = preg_replace('/[\s　]+/u', '', $event['message']['text'] ?? '');
+
+            // ★★★ これが重要！switchで使うために追加 ★★★
+            $command = $text;
+ 
             $replyText = null;
 
             // ■ 登録コマンド（企業コード4桁 + 社員ID 1〜4桁）
@@ -205,6 +209,10 @@ class LineWebhookController extends Controller
             // 退勤
             // ----------------------------------------
             case '退勤':
+                if (!$attendance->clock_in)
+                    return "⚠️ 出勤していません。";
+                if ($attendance->clock_out)
+                    return "⚠️ すでに退勤済みです。";
 
                 if (!$attendance->clock_in)
                     return "⚠️ 出勤していません。";
