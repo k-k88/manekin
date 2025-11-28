@@ -92,7 +92,7 @@ class ShiftController extends Controller
     }
 
     /**
-     * 🔹 シフト締切ロック判定（half を split と同等に扱う）
+     * 🔹 シフト締切ロック判定
      */
     protected function getShiftLockInfo(User $user, int $year, int $month): array
     {
@@ -103,19 +103,14 @@ class ShiftController extends Controller
         $targetDate = Carbon::create($year, $month, 1)->startOfDay();
         $monthEnd   = $targetDate->copy()->endOfMonth()->day;
 
-        // --- 過去月 → 全ロック ---
         if ($targetDate->lt($today->copy()->startOfMonth())) {
             return [true, range(1, $monthEnd)];
         }
 
-        // --- 未来月 → ロック無し ---
         if ($targetDate->gt($today->copy()->startOfMonth())) {
             return [false, []];
         }
 
-        // ===============================
-        // 🔸 single モード（half/split は対象外）
-        // ===============================
         if (!in_array($store->shift_deadline_type, ['split', 'half'])) {
             $deadline = Carbon::create($year, $month, $store->shift_deadline_day ?? 10)->startOfDay();
             if ($today->gt($deadline)) {
@@ -124,23 +119,17 @@ class ShiftController extends Controller
             return [false, []];
         }
 
-        // ===============================
-        // 🔸 split / half モード（前半・後半）
-        // ===============================
         $firstLimit  = Carbon::create($year, $month, $store->shift_first_half_deadline  ?? 10)->startOfDay();
         $secondLimit = Carbon::create($year, $month, $store->shift_second_half_deadline ?? 25)->startOfDay();
 
-        // ☆ 前半締切前 → 後半ロック
         if ($today->lte($firstLimit)) {
             return [false, range(16, $monthEnd)];
         }
 
-        // ☆ 前半締切後〜後半締切前 → 前半ロック
         if ($today->gt($firstLimit) && $today->lte($secondLimit)) {
             return [false, range(1, 15)];
         }
 
-        // ☆ 後半締切後 → 全ロック
         if ($today->gt($secondLimit)) {
             return [true, range(1, $monthEnd)];
         }
@@ -149,14 +138,16 @@ class ShiftController extends Controller
     }
 
     /**
-     * 🔹 1日保存
+     * 🔹 1日保存（有休対応）
      */
     public function save(Request $request)
     {
         try {
             $date     = $request->shift_date;
             $userId   = $request->user_id;
-            $isDayOff = $request->boolean('is_day_off');
+
+            $isDayOff     = $request->boolean('is_day_off');
+            $isPaidLeave  = $request->boolean('is_paid_leave'); // ★追加
 
             $user = User::findOrFail($userId);
             $baseDate = Carbon::parse($date)->format('Y-m-d');
@@ -174,21 +165,28 @@ class ShiftController extends Controller
                 return response()->json(['success'=>false,'message'=>'⚠ 確定済みです'],409);
             }
 
-            $start = $isDayOff ? null : $this->normalizeShiftDateTime($baseDate,$request->start_time);
-            $end   = $isDayOff ? null : $this->normalizeShiftDateTime($baseDate,$request->end_time);
+            // 有給 → start/end は絶対 null
+            if ($isPaidLeave) {
+                $start = null;
+                $end   = null;
+            } else {
+                $start = $isDayOff ? null : $this->normalizeShiftDateTime($baseDate,$request->start_time);
+                $end   = $isDayOff ? null : $this->normalizeShiftDateTime($baseDate,$request->end_time);
 
-            if (!$isDayOff && (!$start || !$end)) {
-                return response()->json(['success'=>false,'message'=>'時刻が不正です'],422);
+                if (!$isDayOff && (!$start || !$end)) {
+                    return response()->json(['success'=>false,'message'=>'時刻が不正です'],422);
+                }
             }
 
             ShiftRequest::updateOrCreate(
                 ['user_id'=>$userId,'shift_date'=>$baseDate],
                 [
-                    'is_day_off'=>$isDayOff,
-                    'start_time'=>$start,
-                    'end_time'=>$end,
-                    'store_id'=>$user->store_id,
-                    'status'=>'pending'
+                    'is_day_off'      => $isDayOff,
+                    'is_paid_leave'   => $isPaidLeave,   // ★追加
+                    'start_time'      => $start,
+                    'end_time'        => $end,
+                    'store_id'        => $user->store_id,
+                    'status'          => 'pending'
                 ]
             );
 
@@ -201,7 +199,7 @@ class ShiftController extends Controller
     }
 
     /**
-     * 🔹 一括保存（空欄は公休）
+     * 🔹 一括保存（有休対応）
      */
     public function saveAll(Request $request)
     {
@@ -236,31 +234,43 @@ class ShiftController extends Controller
                 $s = $shifts[$dateStr] ?? null;
 
                 if ($s) {
-                    $isDayOff = !empty($s['is_day_off']);
-                    $start = $isDayOff ? null : $this->normalizeShiftDateTime($dateStr,$s['start_time'] ?? null);
-                    $end   = $isDayOff ? null : $this->normalizeShiftDateTime($dateStr,$s['end_time'] ?? null);
 
-                    if (!$isDayOff && (!$start || !$end)) continue;
+                    $isDayOff    = !empty($s['is_day_off']);
+                    $isPaidLeave = !empty($s['is_paid_leave']); // ★追加
+
+                    if ($isPaidLeave) {
+                        $start = null;
+                        $end   = null;
+                    } else {
+                        $start = $isDayOff ? null : $this->normalizeShiftDateTime($dateStr,$s['start_time'] ?? null);
+                        $end   = $isDayOff ? null : $this->normalizeShiftDateTime($dateStr,$s['end_time'] ?? null);
+
+                        if (!$isDayOff && (!$start || !$end)) continue;
+                    }
 
                     ShiftRequest::updateOrCreate(
                         ['user_id'=>$userId,'shift_date'=>$dateStr],
                         [
-                            'is_day_off'=>$isDayOff,
-                            'start_time'=>$start,
-                            'end_time'=>$end,
-                            'store_id'=>$user->store_id,
-                            'status'=>'pending'
+                            'is_day_off'    => $isDayOff,
+                            'is_paid_leave' => $isPaidLeave,  // ★追加
+                            'start_time'    => $start,
+                            'end_time'      => $end,
+                            'store_id'      => $user->store_id,
+                            'status'        => 'pending'
                         ]
                     );
+
                 } else {
+
                     ShiftRequest::updateOrCreate(
                         ['user_id'=>$userId,'shift_date'=>$dateStr],
                         [
-                            'is_day_off'=>true,
-                            'start_time'=>null,
-                            'end_time'=>null,
-                            'store_id'=>$user->store_id,
-                            'status'=>'pending'
+                            'is_day_off'    => true,
+                            'is_paid_leave' => false, // 公休
+                            'start_time'    => null,
+                            'end_time'      => null,
+                            'store_id'      => $user->store_id,
+                            'status'        => 'pending'
                         ]
                     );
                 }

@@ -34,10 +34,11 @@ class Attendance extends Model
     protected $casts = [
         'date' => 'date:Y-m-d',
 
-        'clock_in'     => 'datetime',
-        'clock_out'    => 'datetime',
-        'break_start'  => 'datetime',
-        'break_end'    => 'datetime',
+        'clock_in' => 'string',
+'clock_out' => 'string',
+
+        'break_start'  => 'string',
+        'break_end'    => 'string',
 
         'late_flag' => 'boolean',
         'early_leave_flag' => 'boolean',

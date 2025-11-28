@@ -59,14 +59,17 @@ public function edit(User $user)
 public function update(Request $request, User $user)
 {
     $validated = $request->validate([
-        'name' => 'required|string|max:255',
+        'name'  => 'required|string|max:255',
         'email' => 'required|email|unique:users,email,' . $user->id,
+        'role'  => 'required|in:company_admin,employee', // ← 修正ここ
     ]);
 
     $user->update($validated);
 
-    return redirect()->route('admin.users.index')->with('success', 'ユーザー情報を更新しました。');
+    return redirect()->route('admin.users.index')
+        ->with('success', 'ユーザー情報を更新しました。（権限も更新）');
 }
+
 
 public function destroy(User $user)
 {
@@ -75,5 +78,10 @@ public function destroy(User $user)
     return redirect()->route('admin.users.index')->with('success', 'ユーザーを削除しました。');
 }
 
+public function show(User $user)
+{
+    // 詳細画面を作らないなら一覧にリダイレクトでOK
+    return redirect()->route('admin.users.index');
+}
 
 }

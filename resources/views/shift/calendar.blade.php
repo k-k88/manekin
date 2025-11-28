@@ -28,24 +28,19 @@
            class="btn btn-outline-secondary btn-sm mb-2">次月 →</a>
     </div>
 
-   {{-- 締切情報 --}}
-<div class="alert alert-info py-2 small mb-3">
-    <strong>📌 締切設定：</strong>
+    {{-- 締切情報 --}}
+    <div class="alert alert-info py-2 small mb-3">
+        <strong>📌 締切設定：</strong>
 
-    @if ($user->store)
-        @if (in_array($user->store->shift_deadline_type, ['split','half']))
-            {{-- 前半後半型 --}}
-            🌓 前半 {{ $user->store->shift_first_half_deadline ?? '10' }}日
-            ／
-            🌕 後半 {{ $user->store->shift_second_half_deadline ?? '25' }}日
-        @else
-            {{-- 単一締切 --}}
-            📅 月次締切：{{ $user->store->shift_deadline_day ?? '10' }}日
+        @if ($user->store)
+            @if (in_array($user->store->shift_deadline_type, ['split','half']))
+                🌓 前半 {{ $user->store->shift_first_half_deadline ?? '10' }}日 ／
+                🌕 後半 {{ $user->store->shift_second_half_deadline ?? '25' }}日
+            @else
+                📅 月次締切：{{ $user->store->shift_deadline_day ?? '10' }}日
+            @endif
         @endif
-    @endif
-</div>
-
-
+    </div>
 
     {{-- カレンダー --}}
     <div class="table-responsive-sm shadow-sm">
@@ -84,7 +79,9 @@
 
                                 {{-- 1）確定 --}}
                                 @if($confirmedShift)
-                                    @if($confirmedShift->is_day_off)
+                                    @if($confirmedShift->is_paid_leave)
+                                        <div class="text-warning fw-bold small">🌕 有給 (確定)</div>
+                                    @elseif($confirmedShift->is_day_off)
                                         <div class="text-danger fw-bold small">❌ 確定休</div>
                                     @else
                                         <div class="text-success small fw-semibold">
@@ -94,10 +91,14 @@
                                     @endif
                                 @endif
 
-                                {{-- 2）提出中（確定が無い時のみ） --}}
+                                {{-- 2）提出中 --}}
                                 @if(!$confirmedShift && $requestShift)
-                                    @if($requestShift->is_day_off)
+                                    @if($requestShift->is_paid_leave)
+                                        <div class="text-warning fw-semibold small">🌕 有給 (提出中)</div>
+
+                                    @elseif($requestShift->is_day_off)
                                         <div class="text-primary fw-semibold small">❌ 希望休 (提出中)</div>
+
                                     @else
                                         <div class="text-primary small fw-semibold">
                                             {{ \Carbon\Carbon::parse($requestShift->start_time)->format('H:i') }}〜
@@ -107,16 +108,15 @@
                                     @endif
                                 @endif
 
-                                {{-- 4）ロック日でデータなし --}}
+                                {{-- ロック日 --}}
                                 @if($isLocked && !$confirmedShift && !$requestShift)
                                     <div class="text-muted small">⛔ 締切済</div>
                                 @endif
 
-                                {{-- ★ 5）公休（データなし & 非ロック） --}}
+                                {{-- 公休 --}}
                                 @if(!$confirmedShift && !$requestShift && !$isLocked)
                                     <div class="text-secondary small">公休</div>
                                 @endif
-
                             </td>
                         @endif
 
@@ -134,7 +134,7 @@
     </button>
 </div>
 
-{{-- モーダル --}}
+{{-- モーダル：有給追加済み --}}
 <div class="modal fade" id="shiftModal" tabindex="-1">
     <div class="modal-dialog">
         <form id="shiftForm" class="modal-content">
@@ -146,11 +146,20 @@
             </div>
 
             <div class="modal-body">
+
+                {{-- ★ 有給 --}}
+                <div class="form-check form-switch mb-3">
+                    <input type="checkbox" id="is_paid_leave" class="form-check-input">
+                    <label class="form-check-label" for="is_paid_leave">有給にする</label>
+                </div>
+
+                {{-- 希望休 --}}
                 <div class="form-check form-switch mb-3">
                     <input type="checkbox" id="is_day_off" class="form-check-input">
                     <label class="form-check-label" for="is_day_off">希望休にする</label>
                 </div>
 
+                {{-- 時間 --}}
                 <div id="timeInputs">
                     <input type="text" id="start_time" class="form-control mb-2" placeholder="開始 (例: 09:00 / 25:00)">
                     <input type="text" id="end_time" class="form-control" placeholder="終了 (例: 17:00 / 27:30)">
@@ -164,7 +173,6 @@
     </div>
 </div>
 
-{{-- CSS --}}
 <style>
 .locked {
     background-color: #f2f2f2 !important;
@@ -181,9 +189,9 @@
 }
 </style>
 
-{{-- JS --}}
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+
     const userId         = document.getElementById('shift_user_id').value;
     const year           = document.getElementById('currentYear').value;
     const month          = document.getElementById('currentMonth').value;
@@ -193,19 +201,24 @@ document.addEventListener('DOMContentLoaded', function () {
     const draftKey = `shiftDrafts_${userId}_${String(year)}${String(month).padStart(2, '0')}`;
     let shiftData  = JSON.parse(localStorage.getItem(draftKey) || '{}');
 
-    // 🔹 下書きを表示
+    // ==== 下書き表示（有給） ====
     for (const date in shiftData) {
         const s = shiftData[date];
         if (!s) continue;
 
-        const [y, m, dStr] = date.split('-');
-        const dayNum = parseInt(dStr, 10);
-        if (lockedDates.includes(dayNum)) continue; // ロック日は非表示
+        const dayNum = parseInt(date.split('-')[2], 10);
+        if (lockedDates.includes(dayNum)) continue;
 
         const cell = document.querySelector(`td.shift-day[data-date="${date}"]`);
-        if (!cell) continue;
+        if (!cell || cell.dataset.hasShift === '1') continue;
 
-        if (cell.dataset.hasShift === '1') continue;
+        if (s.is_paid_leave) {
+            cell.insertAdjacentHTML(
+                'beforeend',
+                `<div class="text-warning fw-semibold small">🌕 有給 (下書き)</div>`
+            );
+            continue;
+        }
 
         if (s.is_day_off) {
             cell.insertAdjacentHTML(
@@ -220,51 +233,69 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
-    // 🔹 一時保存
+    // ==== 一時保存 ====
     document.getElementById('shiftForm').addEventListener('submit', e => {
         e.preventDefault();
+
         const date = document.getElementById('shift_date').value;
 
         shiftData[date] = {
-            is_day_off: document.getElementById('is_day_off').checked,
-            start_time: document.getElementById('start_time').value.trim(),
-            end_time:   document.getElementById('end_time').value.trim(),
+            is_paid_leave: document.getElementById('is_paid_leave').checked,
+            is_day_off:    document.getElementById('is_day_off').checked,
+            start_time:    document.getElementById('start_time').value.trim(),
+            end_time:      document.getElementById('end_time').value.trim(),
         };
 
         localStorage.setItem(draftKey, JSON.stringify(shiftData));
         location.reload();
     });
 
-    // 🔹 セルクリック
+    // ==== セルクリック ====
     document.querySelectorAll('.shift-day').forEach(cell => {
         cell.addEventListener('click', () => {
             const date = cell.dataset.date;
-            const day  = parseInt(cell.dataset.day, 10);
 
-            if (lockedDates.includes(day)) return;
+            if (lockedDates.includes(parseInt(cell.dataset.day))) return;
             if (deadlinePassed) return;
 
-            const s = shiftData[date] ?? { is_day_off:false, start_time:'', end_time:'' };
+            const s = shiftData[date] ?? {
+                is_paid_leave:false,
+                is_day_off:false,
+                start_time:'',
+                end_time:''
+            };
 
             document.getElementById('shiftModalTitle').innerText = `シフト入力: ${date}`;
-            document.getElementById('shift_date').value   = date;
-            document.getElementById('is_day_off').checked = s.is_day_off;
-            document.getElementById('start_time').value   = s.start_time;
-            document.getElementById('end_time').value     = s.end_time;
+            document.getElementById('shift_date').value = date;
 
-            document.getElementById('timeInputs').style.opacity = s.is_day_off ? 0.3 : 1;
+            document.getElementById('is_paid_leave').checked = s.is_paid_leave;
+            document.getElementById('is_day_off').checked    = s.is_day_off;
+            document.getElementById('start_time').value      = s.start_time;
+            document.getElementById('end_time').value        = s.end_time;
+
+            updateTimeInputState();
 
             new bootstrap.Modal(document.getElementById('shiftModal')).show();
         });
     });
 
-    // 🔹 希望休トグル
-    document.getElementById('is_day_off').addEventListener('change', function () {
-        document.getElementById('timeInputs').style.opacity = this.checked ? 0.3 : 1;
-    });
+    // ==== 有給 or 希望休なら時刻無効化 ====
+    function updateTimeInputState() {
+        const off  = document.getElementById('is_day_off').checked;
+        const paid = document.getElementById('is_paid_leave').checked;
+        const disabled = off || paid;
 
-    // 🔹 一括提出
+        document.getElementById('timeInputs').style.opacity = disabled ? 0.3 : 1;
+        document.getElementById('start_time').disabled = disabled;
+        document.getElementById('end_time').disabled   = disabled;
+    }
+
+    document.getElementById('is_day_off').addEventListener('change', updateTimeInputState);
+    document.getElementById('is_paid_leave').addEventListener('change', updateTimeInputState);
+
+    // ==== 一括提出 ====
     document.getElementById('saveAllBtn').addEventListener('click', function () {
+
         if (deadlinePassed) {
             alert("⛔ この月のシフトはすでに締切済みです。");
             return;
@@ -292,6 +323,7 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         });
     });
+
 });
 </script>
 @endsection
