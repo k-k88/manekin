@@ -40,7 +40,7 @@ class AdminCompanyController extends Controller
     ]);
 
     // ✅ 作成直後に管理者作成画面へ飛ばす
-    return redirect()->route('admin.companies.admin.create', $company->id)
+    return redirect()->route('admin.companies.create', $company->id)
         ->with('success', '会社を作成しました。次に管理者ユーザーを作成してください。');
 }
 public function edit(Company $company)

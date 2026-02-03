@@ -3,7 +3,18 @@
 @section('title', $company->name . ' のユーザー一覧')
 
 @section('content')
-<h1 class="mb-4">👥 {{ $company->name }} のユーザー一覧</h1>
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="mb-0">👥 {{ $company->name }} のユーザー一覧</h1>
+
+  <a href="{{ route('admin.companies.admin.create', $company->id) }}"
+   class="btn btn-success">
+    ＋ 管理者ユーザー作成
+</a>
+
+
+
+</div>
+
 
 @if (session('success'))
     <div class="alert alert-success">{{ session('success') }}</div>

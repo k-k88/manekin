@@ -132,24 +132,30 @@ public function index(Request $request, Company $company, User $employee)
     // 実働時間は Attendance
     foreach ($monthAtt as $a) {
 
-        if (!$a->clock_in || !$a->clock_out) continue;
+    // ★ 勤務回数は Attendance があれば +1
+    $workCount++;
 
-        $diff = $this->calcWorkMinutes(
-            $a->date,
-            $a->clock_in,
-            $a->clock_out,
-            $a->break_minutes
-        );
+    // 打刻がなければ時間計算しない
+    if (!$a->clock_in || !$a->clock_out) {
+        continue;
+    }
 
-        if ($diff > 0) {
-            $sumWork += $diff;
-            $workCount++;
+    $diff = $this->calcWorkMinutes(
+        $a->date,
+        $a->clock_in,
+        $a->clock_out,
+        $a->break_minutes
+    );
 
-            if ($diff > 480) {
-                $sumOver += ($diff - 480);
-            }
+    if ($diff > 0) {
+        $sumWork += $diff;
+
+        if ($diff > 480) {
+            $sumOver += ($diff - 480);
         }
     }
+}
+
 
     $summary = [
         'work_hours'     => round($sumWork / 60, 1),

@@ -20,26 +20,28 @@ class AdminUserController extends Controller
         return view('admin.users.create-company-admin', compact('company'));
     }
 
-    public function storeCompanyAdmin(Request $request, Company $company)
-    {
-        $request->validate([
-            'name' => 'required|string|max:255',
-            'email' => 'required|email|unique:users,email',
-            'password' => 'required|min:6|confirmed',
-        ]);
+  public function storeCompanyAdmin(Request $request, Company $company)
+{
+    $request->validate([
+        'name' => 'required|string|max:255',
+        'email' => 'required|email|unique:users,email',
+        'password' => 'required|min:6|confirmed',
+    ]);
 
-        User::create([
-            'name'       => $request->name,
-            'email'      => $request->email,
-            'company_id' => $company->id,
-            'role'       => 'company_admin',
-            'password'   => bcrypt($request->password),
-        ]);
+    User::create([
+        'name'       => $request->name,
+        'email'      => $request->email,
+        'company_id' => $company->id,
+        'role'       => 'company_admin',
+        'status'     => 'active',
+        'password'   => $request->password,
+    ]);
 
-        return redirect()->route('admin.companies.index')
-            ->with('success', '管理者ユーザーを作成しました！');
-    
-    }
+    return redirect()
+        ->route('admin.companies.index')
+        ->with('success', '管理者ユーザーを作成しました！');
+}
+
     public function byCompany(Request $request)
 {
     $request->validate([

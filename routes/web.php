@@ -44,23 +44,36 @@ Route::middleware(['auth'])->group(function () {
     // ================================
     // ★ システム管理者ルート
     // ================================
-    Route::middleware('can:super-admin')
-        ->prefix('admin')
-        ->name('admin.')
-        ->group(function () {
+  Route::middleware('can:super-admin')
+    ->prefix('admin')
+    ->name('admin.')
+    ->group(function () {
 
-            Route::get('/', [AdminController::class, 'dashboard'])->name('dashboard');
+        Route::get('/', [AdminController::class, 'dashboard'])->name('dashboard');
 
-            // 会社管理
-            Route::resource('companies', AdminCompanyController::class);
+        // 会社管理
+        Route::resource('companies', AdminCompanyController::class);
 
-            // 会社別ユーザー絞り込み
-            Route::get('users/by-company', [AdminUserController::class, 'byCompany'])
-                ->name('users.byCompany');
+        // ★ 会社専用：管理者ユーザー作成（追加）
+       Route::get(
+    'companies/{company}/admin/create',
+    [AdminUserController::class, 'createCompanyAdmin']
+)->name('companies.admin.create');
 
-            // ユーザー管理
-            Route::resource('users', AdminUserController::class);
-        });
+
+        Route::post(
+            'companies/{company}/admin',
+            [AdminUserController::class, 'storeCompanyAdmin']
+        )->name('companies.admin.store');
+
+        // 会社別ユーザー絞り込み
+        Route::get('users/by-company', [AdminUserController::class, 'byCompany'])
+            ->name('users.byCompany');
+
+    Route::resource('users', AdminUserController::class)->except(['create','store']);
+
+    });
+
 
   Route::get(
         '/company/{company}/employees/{employee}/dashboard',

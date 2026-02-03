@@ -3,7 +3,18 @@
 @section('title', '管理者ユーザー作成')
 
 @section('content')
+
 <h1 class="mb-4">{{ $company->name }} の管理者作成</h1>
+@if ($errors->any())
+    <div class="alert alert-danger">
+        <ul class="mb-0">
+            @foreach ($errors->all() as $error)
+                <li>{{ $error }}</li>
+            @endforeach
+        </ul>
+    </div>
+@endif
+
 
 <form action="{{ route('admin.companies.admin.store', $company->id) }}" method="POST">
     @csrf
