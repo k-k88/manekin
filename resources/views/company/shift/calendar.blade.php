@@ -181,19 +181,35 @@ document.addEventListener('DOMContentLoaded', function(){
                     html = '<p class="text-muted">この日の登録・希望シフトはありません。</p>';
                 } else {
                     data.forEach(s => {
-                        let start = s.is_day_off === 0 ? extractTime(s.start_time) : '';
-                        let end   = s.is_day_off === 0 ? extractTime(s.end_time) : '';
+    let label = '';
+    let start = '';
+    let end   = '';
 
-                        const kind = s.status === 'confirmed' ? '✅確定' : '📝希望';
-                        const typeName = s.is_day_off === 0
-                            ? ''
-                            : (s.is_paid_leave ? '(有休)' : '(希望休)');
+    if (s.is_paid_leave == 1) {
+        label = '（有休）';
+    }
+    else if (s.is_day_off == 1) {
+        label = '（希望休）';
+    }
+    else {
+        start = extractTime(s.start_time);
+        end   = extractTime(s.end_time);
+    }
 
-                        html += `<div style="cursor:pointer;"
-                                 onclick="applyRequestShift(${s.user_id}, '${start}', '${end}', ${s.is_day_off}, ${s.is_paid_leave})">
-                                    ${kind}：${s.user_name} ${typeName} ${s.is_day_off === 0 ? start+'〜'+end : ''}
-                                 </div>`;
-                    });
+    html += `
+      <div style="cursor:pointer;"
+           onclick="applyRequestShift(
+             ${s.user_id},
+             '${start}',
+             '${end}',
+             ${s.is_day_off},
+             ${s.is_paid_leave}
+           )">
+        📝希望：${s.user_name} ${label} ${start && end ? start+'〜'+end : ''}
+      </div>
+    `;
+});
+
                 }
                 document.getElementById('existing_shifts').innerHTML = html;
                 shiftModal.show();
