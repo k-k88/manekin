@@ -10,8 +10,9 @@ return new class extends Migration {
         Schema::table('stores', function (Blueprint $table) {
             // 提出期限タイプ：single（一括） or split（前半後半）
             $table->enum('shift_deadline_type', ['single', 'split'])
-                ->default('single')
-                ->after('status');
+                ->default('single');
+             
+                
 
             // 一括型（毎月◯日まで）
             $table->unsignedTinyInteger('shift_deadline_day')
