@@ -25,13 +25,10 @@ class AppServiceProvider extends ServiceProvider
         Gate::define('super-admin', function ($user) {
             return $user->role === 'super_admin';
         });
-
+  if (app()->environment('production')) {
+        URL::forceScheme('https');
+    }
         // ✅ ngrok（https環境）でもHTTPSを強制
-        if (
-            config('app.env') === 'production' ||
-            str_contains(config('app.url'), 'ngrok-free.dev')
-        ) {
-            URL::forceScheme('https');
-        }
+       
     }
 }
