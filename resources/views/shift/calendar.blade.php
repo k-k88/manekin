@@ -294,54 +294,35 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('is_paid_leave').addEventListener('change', updateTimeInputState);
 
     // ==== 一括提出 ====
-// ==== 一括提出 ====
-document.getElementById('saveAllBtn').addEventListener('click', function () {
+    document.getElementById('saveAllBtn').addEventListener('click', function () {
 
-    if (deadlinePassed) {
-        alert("⛔ この月のシフトはすでに締切済みです。");
-        return;
-    }
-
-    const submitShifts = {};
-
-    for (const date in shiftData) {
-        const s = shiftData[date];
-
-        // ★ 完全未入力 = 公休 → 送信しない
-        if (
-            !s.is_paid_leave &&
-            !s.is_day_off &&
-            !s.start_time &&
-            !s.end_time
-        ) {
-            continue;
+        if (deadlinePassed) {
+            alert("⛔ この月のシフトはすでに締切済みです。");
+            return;
         }
 
-        submitShifts[date] = s;
-    }
-
-    fetch("{{ route('shift.user.saveAll', ['user'=>$user->id]) }}", {
-        method: "POST",
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': '{{ csrf_token() }}'
-        },
-        body: JSON.stringify({
-            user_id: userId,
-            shifts: submitShifts
+        fetch("{{ route('shift.user.saveAll', ['user'=>$user->id]) }}", {
+            method: "POST",
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': '{{ csrf_token() }}'
+            },
+            body: JSON.stringify({
+                user_id: userId,
+                shifts: shiftData
+            })
         })
-    })
-    .then(r => r.json())
-    .then(r => {
-        if (r.success) {
-            localStorage.removeItem(draftKey);
-            alert("✅ シフトを提出しました（未入力の駒は公休）");
-            location.reload();
-        } else {
-            alert(r.message || "⚠️ 提出に失敗しました");
-        }
+        .then(r => r.json())
+        .then(r => {
+            if (r.success) {
+                localStorage.removeItem(draftKey);
+                alert("✅ シフトを提出しました（未入力の駒は公休として登録されます）");
+                location.reload();
+            } else {
+                alert(r.message || "⚠️ 提出に失敗しました");
+            }
+        });
     });
-});
 
 });
 </script>
