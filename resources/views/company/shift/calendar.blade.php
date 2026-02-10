@@ -147,7 +147,7 @@ document.addEventListener('DOMContentLoaded', function(){
         const type = Number(this.value);
 
         if (type === 1) { 
-            document.getElementById('is_day_off').value = 0;
+            document.getElementById('is_day_off').value = 1;
             document.getElementById('is_paid_leave').value = 0;
         }
         else if (type === 2) { 
